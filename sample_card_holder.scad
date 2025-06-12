@@ -43,16 +43,18 @@ style_hole = 0; // [0:No holes, 1:Magnet holes only, 2:Magnet and screw holes, 3
 style_lip = 0; // [0:Regular lip, 1:Remove lip subtractively, 2:Remove lip and retain height]
 
 /* [Advanced Settings] */
-// Wall thickness for calculating interior space
+// X-axis wall thickness for calculating interior space
 sh_wall_thickness = 3.6; // [2:0.1:6]
-// Side wall thickness for calculating interior space
+// Y-axis wall thickness for calculating interior space
 sh_side_wall_thickness = 3.75; // [2:0.1:6]
 // Minimum spacing between sample cutouts
 sh_min_spacing = 1.0; // [0.5:0.1:3]
 // Height from bottom where sample cutouts start
 sh_cutout_start_z = 6.0; // [4:0.1:10]
 // Layout algorithm selection
-sh_algorithm_type = 0; // [0:Simple Layout, 1:Advanced Grouping]
+sh_algorithm_type = 1; // [0:Simple Layout, 1:Advanced Grouping]
+// Row spacing for advanced grouping algorithm (0 = auto-calculate)
+sh_row_spacing = 0; // [0:0.1:20]
 
 // Main model - create solid gridfinity box without lip, then subtract cutouts
 color("lightgray") 
@@ -67,7 +69,7 @@ difference() {
     } else {
         grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
                               sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
-                              sh_min_spacing, sh_cutout_start_z);
+                              sh_min_spacing, sh_cutout_start_z, sh_row_spacing);
     }
 }
 
