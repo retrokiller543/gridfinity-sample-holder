@@ -12,6 +12,7 @@ use <gridfinity-rebuilt-openscad/generic-helpers.scad>
 // Include our modular components
 use <src/gridfinity_box.scad>
 use <src/sample_cutouts.scad>
+use <src/grouped_sample_cutouts.scad>
 
 /* [Box Dimensions] */
 // Width of the box in gridfinity units (42mm each)
@@ -50,6 +51,8 @@ sh_side_wall_thickness = 3.75; // [2:0.1:6]
 sh_min_spacing = 1.0; // [0.5:0.1:3]
 // Height from bottom where sample cutouts start
 sh_cutout_start_z = 6.0; // [4:0.1:10]
+// Layout algorithm selection
+sh_algorithm_type = 0; // [0:Simple Layout, 1:Advanced Grouping]
 
 // Main model - create solid gridfinity box without lip, then subtract cutouts
 color("lightgray") 
@@ -57,15 +60,22 @@ difference() {
     gridfinity_box(sh_box_width, sh_box_depth, sh_box_height, l_grid, style_lip, style_hole, cut_to_height=true);
     
     // Subtract sample cutouts from the top
-    sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
-                  sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
-                  sh_min_spacing, sh_cutout_start_z);
+    if (sh_algorithm_type == 0) {
+        sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                      sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                      sh_min_spacing, sh_cutout_start_z);
+    } else {
+        grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                              sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                              sh_min_spacing, sh_cutout_start_z);
+    }
 }
 
 
 
 // Display information
 echo("=== Gridfinity Sample Box Generator ===");
+echo(str("Algorithm: ", sh_algorithm_type == 0 ? "Simple Layout" : "Advanced Grouping"));
 echo(str("Box: ", sh_box_width, "x", sh_box_depth, " gridfinity units"));  
 echo(str("Dimensions: ", sh_box_width * l_grid, " x ", sh_box_depth * l_grid, " x ", sh_box_height, " mm"));
 echo(str("Sample: ", sh_sample_thickness, " x ", sh_sample_width, " x ", sh_sample_height, " mm"));
