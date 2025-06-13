@@ -32,6 +32,8 @@ class OpenSCADParser:
             r'^\s*(include|use)\s*<([^>]+)>\s*;?\s*$|^\s*(include|use)\s*"([^"]+)"\s*;?\s*$',
             re.MULTILINE
         )
+        # Pattern to match parameter sections /* [Section Name] */
+        self.parameter_section_pattern = re.compile(r'^\s*/\*\s*\[([^\]]+)\]\s*\*/', re.MULTILINE)
         
     def parse_file(self, filepath: Path) -> Tuple[List[str], List[IncludeStatement]]:
         """Parse a file and extract includes/uses"""
@@ -60,6 +62,58 @@ class OpenSCADParser:
                 ))
                 
         return lines, includes
+    
+    def extract_parameter_sections(self, filepath: Path) -> List[str]:
+        """Extract parameter sections from an OpenSCAD file"""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        lines = content.splitlines()
+        parameter_lines = []
+        current_section_start = None
+        
+        for i, line in enumerate(lines):
+            # Check if this line starts a parameter section
+            if self.parameter_section_pattern.match(line):
+                current_section_start = i
+                parameter_lines.append(line)
+            elif current_section_start is not None:
+                # We're inside a parameter section
+                stripped_line = line.strip()
+                
+                # Continue until we hit an empty line, another comment block, or code
+                if (stripped_line == "" or 
+                    stripped_line.startswith("//") or 
+                    stripped_line.startswith("/*") or
+                    (stripped_line and not stripped_line.startswith("/") and "=" in stripped_line)):
+                    
+                    if "=" in stripped_line and not stripped_line.startswith("//"):
+                        # This is a parameter definition
+                        parameter_lines.append(line)
+                    elif stripped_line.startswith("//"):
+                        # This is a comment within the section
+                        parameter_lines.append(line)
+                    elif stripped_line == "":
+                        # Empty line - might be end of section, check next line
+                        if i + 1 < len(lines):
+                            next_line = lines[i + 1].strip()
+                            if (next_line.startswith("/*") and "[" in next_line) or not next_line.startswith("//"):
+                                # End of current section
+                                parameter_lines.append("")  # Add the empty line
+                                current_section_start = None
+                            else:
+                                parameter_lines.append(line)
+                        else:
+                            # End of file
+                            parameter_lines.append(line)
+                            current_section_start = None
+                    else:
+                        # End of parameter section
+                        current_section_start = None
+                else:
+                    parameter_lines.append(line)
+        
+        return parameter_lines
 
 
 class OpenSCADBundler:
@@ -70,6 +124,27 @@ class OpenSCADBundler:
         self.parser = OpenSCADParser()
         self.processed_files: Set[Path] = set()
         self.bundled_content: List[str] = []
+        self.parameter_sections: List[str] = []
+        
+    def _find_parameter_line_indices(self, lines: List[str], parameter_sections: List[str]) -> Set[int]:
+        """Find line indices that correspond to parameter sections"""
+        indices = set()
+        param_line_idx = 0
+        
+        for i, line in enumerate(lines):
+            if param_line_idx < len(parameter_sections):
+                # Remove leading/trailing whitespace for comparison
+                if line.strip() == parameter_sections[param_line_idx].strip():
+                    indices.add(i)
+                    param_line_idx += 1
+                elif line.strip() == "":
+                    # Handle empty lines within parameter sections
+                    if (param_line_idx < len(parameter_sections) and 
+                        parameter_sections[param_line_idx].strip() == ""):
+                        indices.add(i)
+                        param_line_idx += 1
+        
+        return indices
         
     def resolve_path(self, include_path: str, current_file: Path) -> Optional[Path]:
         """Resolve an include/use path relative to the current file"""
@@ -92,7 +167,7 @@ class OpenSCADBundler:
         """Determine if a file should be inlined based on its existence"""
         return filepath.exists() and filepath.suffix == '.scad'
         
-    def process_file(self, filepath: Path, depth: int = 0) -> List[str]:
+    def process_file(self, filepath: Path, depth: int = 0, is_entry_file: bool = False) -> List[str]:
         """Process a single file and its dependencies"""
         filepath = filepath.resolve()
         
@@ -105,12 +180,23 @@ class OpenSCADBundler:
         lines, includes = self.parser.parse_file(filepath)
         result = []
         
+        # Extract parameter sections from entry file
+        parameter_lines_to_skip = set()
+        if is_entry_file:
+            parameter_sections = self.parser.extract_parameter_sections(filepath)
+            if parameter_sections:
+                self.parameter_sections.extend(parameter_sections)
+                # Mark parameter lines to skip
+                parameter_line_indices = self._find_parameter_line_indices(lines, parameter_sections)
+                parameter_lines_to_skip.update(parameter_line_indices)
+        
         # Add file header comment
         indent = "  " * depth
         result.append(f"{indent}// ===== Begin: {filepath.name} =====")
         
         # Process the file line by line
         skip_lines = set()
+        skip_lines.update(parameter_lines_to_skip)  # Skip parameter sections
         
         # First, handle all includes/uses
         for inc in includes:
@@ -123,13 +209,13 @@ class OpenSCADBundler:
                 # Recursively process the included file
                 if inc.statement_type == 'include':
                     # For 'include', inline the entire file
-                    result.extend(self.process_file(resolved_path, depth + 1))
+                    result.extend(self.process_file(resolved_path, depth + 1, is_entry_file=False))
                 else:  # 'use'
                     # For 'use', we should only include modules/functions
                     # but for simplicity, we'll include everything with a comment
                     result.append(f"{indent}// Original: {inc.original_line}")
                     result.append(f"{indent}// Inlining 'use' file (modules/functions only):")
-                    result.extend(self.process_file(resolved_path, depth + 1))
+                    result.extend(self.process_file(resolved_path, depth + 1, is_entry_file=False))
         
         # Add the rest of the file content
         for i, line in enumerate(lines):
@@ -166,6 +252,7 @@ class OpenSCADBundler:
         # Reset state
         self.processed_files.clear()
         self.bundled_content.clear()
+        self.parameter_sections.clear()
         
         # Add header
         self.bundled_content.extend([
@@ -176,7 +263,14 @@ class OpenSCADBundler:
         ])
         
         # Process the entry file and its dependencies
-        self.bundled_content.extend(self.process_file(entry_file))
+        self.bundled_content.extend(self.process_file(entry_file, is_entry_file=True))
+        
+        # Insert parameter sections at the top (after header)
+        if self.parameter_sections:
+            # Find insertion point after header
+            insertion_point = 4  # After the header lines
+            parameter_content = ["// ===== Parameter Sections =====", ""] + self.parameter_sections + [""]
+            self.bundled_content[insertion_point:insertion_point] = parameter_content
         
         # Write output
         if output_file:
