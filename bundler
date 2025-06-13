@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""
+OpenSCAD Bundler - Combines multiple OpenSCAD files into a single deployable file
+"""
+
+import os
+import sys
+import argparse
+from pathlib import Path
+from typing import Set, List, Tuple, Optional
+import re
+from dataclasses import dataclass
+from collections import deque
+
+
+@dataclass
+class IncludeStatement:
+    """Represents an include or use statement"""
+    statement_type: str  # 'include' or 'use'
+    path: str
+    line_number: int
+    original_line: str
+
+
+class OpenSCADParser:
+    """Simple parser for OpenSCAD files focusing on include/use statements"""
+    
+    def __init__(self):
+        # Pattern to match include/use statements
+        # Handles both <> and "" syntax
+        self.include_pattern = re.compile(
+            r'^\s*(include|use)\s*<([^>]+)>\s*;?\s*$|^\s*(include|use)\s*"([^"]+)"\s*;?\s*$',
+            re.MULTILINE
+        )
+        
+    def parse_file(self, filepath: Path) -> Tuple[List[str], List[IncludeStatement]]:
+        """Parse a file and extract includes/uses"""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        lines = content.splitlines()
+        includes = []
+        
+        for i, line in enumerate(lines):
+            match = self.include_pattern.match(line)
+            if match:
+                # Extract the statement type and path
+                if match.group(1):  # <> syntax
+                    stmt_type = match.group(1)
+                    path = match.group(2)
+                else:  # "" syntax
+                    stmt_type = match.group(3)
+                    path = match.group(4)
+                    
+                includes.append(IncludeStatement(
+                    statement_type=stmt_type,
+                    path=path,
+                    line_number=i,
+                    original_line=line
+                ))
+                
+        return lines, includes
+
+
+class OpenSCADBundler:
+    """Bundles multiple OpenSCAD files into a single file"""
+    
+    def __init__(self, base_dir: Path = None):
+        self.base_dir = base_dir or Path.cwd()
+        self.parser = OpenSCADParser()
+        self.processed_files: Set[Path] = set()
+        self.bundled_content: List[str] = []
+        
+    def resolve_path(self, include_path: str, current_file: Path) -> Optional[Path]:
+        """Resolve an include/use path relative to the current file"""
+        # Try relative to the current file's directory first
+        current_dir = current_file.parent
+        resolved = current_dir / include_path
+        
+        if resolved.exists() and resolved.is_file():
+            return resolved.resolve()
+            
+        # Try relative to base directory
+        resolved = self.base_dir / include_path
+        if resolved.exists() and resolved.is_file():
+            return resolved.resolve()
+            
+        # Path doesn't exist locally, return None
+        return None
+        
+    def should_inline_file(self, filepath: Path) -> bool:
+        """Determine if a file should be inlined based on its existence"""
+        return filepath.exists() and filepath.suffix == '.scad'
+        
+    def process_file(self, filepath: Path, depth: int = 0) -> List[str]:
+        """Process a single file and its dependencies"""
+        filepath = filepath.resolve()
+        
+        # Avoid circular dependencies
+        if filepath in self.processed_files:
+            return [f"// Circular dependency detected: {filepath}"]
+            
+        self.processed_files.add(filepath)
+        
+        lines, includes = self.parser.parse_file(filepath)
+        result = []
+        
+        # Add file header comment
+        indent = "  " * depth
+        result.append(f"{indent}// ===== Begin: {filepath.name} =====")
+        
+        # Process the file line by line
+        skip_lines = set()
+        
+        # First, handle all includes/uses
+        for inc in includes:
+            resolved_path = self.resolve_path(inc.path, filepath)
+            
+            if resolved_path and self.should_inline_file(resolved_path):
+                # Mark this line to be skipped
+                skip_lines.add(inc.line_number)
+                
+                # Recursively process the included file
+                if inc.statement_type == 'include':
+                    # For 'include', inline the entire file
+                    result.extend(self.process_file(resolved_path, depth + 1))
+                else:  # 'use'
+                    # For 'use', we should only include modules/functions
+                    # but for simplicity, we'll include everything with a comment
+                    result.append(f"{indent}// Original: {inc.original_line}")
+                    result.append(f"{indent}// Inlining 'use' file (modules/functions only):")
+                    result.extend(self.process_file(resolved_path, depth + 1))
+        
+        # Add the rest of the file content
+        for i, line in enumerate(lines):
+            if i not in skip_lines:
+                # Check if this line is an include/use that we're keeping
+                is_external_include = False
+                for inc in includes:
+                    if inc.line_number == i:
+                        resolved_path = self.resolve_path(inc.path, filepath)
+                        if not resolved_path or not self.should_inline_file(resolved_path):
+                            is_external_include = True
+                            break
+                
+                if is_external_include:
+                    result.append(f"{indent}// External dependency (kept as-is): {line.strip()}")
+                    result.append(f"{indent}{line}")
+                else:
+                    result.append(f"{indent}{line}")
+        
+        result.append(f"{indent}// ===== End: {filepath.name} =====")
+        result.append("")  # Empty line for readability
+        
+        return result
+        
+    def bundle(self, entry_file: Path, output_file: Path = None):
+        """Bundle starting from an entry file"""
+        entry_file = Path(entry_file).resolve()
+        
+        if not entry_file.exists():
+            raise FileNotFoundError(f"Entry file not found: {entry_file}")
+            
+        print(f"Bundling OpenSCAD project starting from: {entry_file}")
+        
+        # Reset state
+        self.processed_files.clear()
+        self.bundled_content.clear()
+        
+        # Add header
+        self.bundled_content.extend([
+            "// OpenSCAD Bundle - Generated automatically",
+            f"// Entry point: {entry_file.name}",
+            "// This file contains all local dependencies bundled together",
+            "",
+        ])
+        
+        # Process the entry file and its dependencies
+        self.bundled_content.extend(self.process_file(entry_file))
+        
+        # Write output
+        if output_file:
+            output_path = Path(output_file)
+        else:
+            output_path = entry_file.parent / f"./build/{entry_file.stem}_bundled.scad"
+            
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(self.bundled_content))
+            
+        print(f"Bundle created successfully: {output_path}")
+        print(f"Processed {len(self.processed_files)} files")
+        
+        # List external dependencies that were kept
+        external_deps = self.find_external_dependencies()
+        if external_deps:
+            print("\nExternal dependencies (kept as-is):")
+            for dep in sorted(external_deps):
+                print(f"  - {dep}")
+
+
+    def find_external_dependencies(self) -> Set[str]:
+        """Find all external dependencies that weren't bundled"""
+        external = set()
+        
+        for line in self.bundled_content:
+            if "External dependency (kept as-is):" in line:
+                # Extract the include/use statement
+                match = self.parser.include_pattern.search(line)
+                if match:
+                    path = match.group(2) or match.group(4)
+                    external.add(path)
+                    
+        return external
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Bundle OpenSCAD files and their local dependencies into a single file"
+    )
+    parser.add_argument(
+        "input",
+        help="Input OpenSCAD file (entry point)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        help="Output bundled file (default: <input>_bundled.scad)"
+    )
+    parser.add_argument(
+        "-b", "--base-dir",
+        help="Base directory for resolving includes (default: current directory)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Create bundler
+    base_dir = Path(args.base_dir) if args.base_dir else Path.cwd()
+    bundler = OpenSCADBundler(base_dir)
+    
+    # Bundle the files
+    try:
+        bundler.bundle(args.input, args.output)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

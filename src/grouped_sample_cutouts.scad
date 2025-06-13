@@ -1,7 +1,8 @@
 include <grouping_layout_calculator.scad>
 
 module grouped_sample_cutouts(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, 
-                              sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0) {
+                              sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, 
+                              enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0) {
     interior_width = (box_width * l_grid) - (2 * wall_thickness);
     interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
     
@@ -12,8 +13,15 @@ module grouped_sample_cutouts(box_width, box_depth, box_height, l_grid, wall_thi
     echo(str("Interior space: ", interior_width, " x ", interior_depth, " mm"));
     echo(str("Sample size: ", sample_thickness, " x ", sample_width, " mm"));
     echo(str("Row spacing: ", row_spacing > 0 ? str(effective_row_spacing, "mm (manual)") : "auto"));
+    echo(str("Grouping mode: ", enable_grouping ? "enabled" : "disabled (row-based)"));
+    if (enable_grouping) {
+        echo(str("Group count: ", group_count > 0 ? group_count : "auto"));
+        echo(str("Samples per group: ", samples_per_group > 0 ? samples_per_group : "auto"));
+        echo(str("Group spacing: ", group_spacing, "mm"));
+    }
     
-    row_layouts = calculate_grouped_layout(interior_width, interior_depth, sample_width, sample_thickness, min_spacing, effective_row_spacing);
+    row_layouts = calculate_grouped_layout(interior_width, interior_depth, sample_width, sample_thickness, min_spacing, effective_row_spacing, 
+                                           enable_grouping, group_count, samples_per_group, group_spacing);
     
     echo(str("Generated ", len(row_layouts), " rows"));
     display_row_info(row_layouts, sample_width, sample_thickness);
