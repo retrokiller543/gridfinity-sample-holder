@@ -14,6 +14,7 @@ use <src/gridfinity_box.scad>
 use <src/sample_cutouts.scad>
 use <src/grouped_sample_cutouts.scad>
 use <src/algorithms/grouped_v2.scad>
+use <src/label_system.scad>
 
 /* [Box Dimensions] */
 // Width of the box in gridfinity units (42mm each)
@@ -25,11 +26,11 @@ sh_box_height = 21; // [15:0.2:50]
 
 /* [Sample Dimensions] */
 // Width of each sample card in millimeters
-sh_sample_width = 76; // [50:1:100]
+sh_sample_width = 76; // [20:1:300]
 // Height of each sample card in millimeters (for reference only)
 sh_sample_height = 15; // [10:1:25]
 // Thickness of each sample card in millimeters
-sh_sample_thickness = 2.4; // [1:0.1:5]
+sh_sample_thickness = 2.4; // [1:0.1:10]
 
 /* [Gridfinity Settings] */
 // Grid unit size in mm (standard gridfinity is 42mm)
@@ -65,11 +66,14 @@ sh_group_count = 0; // [0:1:100]
 // Number of samples per group (0 = auto-calculate)
 sh_samples_per_group = 0; // [0:1:100]
 // Spacing between groups in millimeters
-sh_group_spacing = 3.0; // [1:0.1:50]
+sh_group_spacing = 10.0; // [1:0.1:100]
 
+/* [Group Label Settings] */
 // === Label System ===
 // Enable magnetic removable labels between groups
 sh_enable_labels = false; // [true, false]
+// Generate separate label objects for printing
+sh_generate_labels = false; // [true, false]
 // Label text mode: auto generates G1, G2, etc., custom uses provided text
 sh_label_text_mode = "auto"; // [auto, custom]
 // Custom label text (comma-separated for multiple groups, e.g., "Sample A,Sample B,Sample C")
@@ -77,43 +81,79 @@ sh_label_custom_text = "Group 1,Group 2,Group 3";
 // Label position within group spacing area
 sh_label_position = "center"; // [start, center, end]
 // Label dimensions in millimeters
-sh_label_width = 20.0; // [5:0.5:50]
-sh_label_height = 8.0; // [3:0.5:20]
+sh_label_width = 10.0; // [3:0.5:100]
+sh_label_height = 8.0; // [3:0.5:300]
 sh_label_thickness = 1.5; // [0.5:0.1:5]
+
+/* [Magnet Settings] */
 // Magnet system for removable labels
 sh_magnet_diameter = 6.0; // [3:0.5:15]
 sh_magnet_thickness = 2.0; // [0.5:0.1:5]
 sh_magnet_count = 2; // [1:1:6]
-// Generate separate label objects for printing
-sh_generate_labels = false; // [true, false]
 
-// Main model - create solid gridfinity box without lip, then subtract cutouts
-color("lightgray") 
-difference() {
-    assert(sh_min_spacing >= 0.5, "Minimum spacing must be at least 0.5mm to ensure proper cutout separation and ease of printing.");
+// Assert validation
+assert(sh_min_spacing >= 0.5, "Minimum spacing must be at least 0.5mm to ensure proper cutout separation and ease of printing.");
 
-    gridfinity_box(sh_box_width, sh_box_depth, sh_box_height, l_grid, style_lip, style_hole, cut_to_height=true);
-    
-    // Subtract sample cutouts from the top
-    // Use advanced algorithm when grouping is enabled OR when explicitly selected
-    if (sh_enable_grouping || sh_algorithm_type == 2) {
-        grouped_v2(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
-                   sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
-                   sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
-                   sh_group_count, sh_samples_per_group, sh_group_spacing,
-                   sh_enable_labels, sh_label_text_mode, sh_label_custom_text, sh_label_position,
-                   sh_label_width, sh_label_height, sh_label_thickness,
-                   sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count);
-    } else if (sh_algorithm_type == 1) {
-        grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+// Multi-plate 3MF generation modules (following Bambu Lab guide)
+module mw_plate_1() {
+    // Main gridfinity holder
+    color("lightgray") 
+    difference() {
+        gridfinity_box(sh_box_width, sh_box_depth, sh_box_height, l_grid, style_lip, style_hole, cut_to_height=true);
+        
+        // Subtract sample cutouts from the top
+        if (sh_enable_grouping || sh_algorithm_type == 2) {
+            grouped_v2(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                       sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                       sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
+                       sh_group_count, sh_samples_per_group, sh_group_spacing,
+                       sh_enable_labels, sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                       sh_label_width, sh_label_height, sh_label_thickness,
+                       sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count);
+        } else if (sh_algorithm_type == 1) {
+            grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                                  sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                                  sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
+                                  sh_group_count, sh_samples_per_group, sh_group_spacing);
+        } else {
+            sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                          sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                          sh_min_spacing, sh_cutout_start_z);
+        }
+    }
+}
+
+module mw_plate_2() {
+    // Label objects for separate printing
+    if (sh_enable_labels && (sh_enable_grouping || sh_algorithm_type == 2)) {
+        generate_label_objects(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
                               sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
                               sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
-                              sh_group_count, sh_samples_per_group, sh_group_spacing);
-    } else {
-        sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
-                      sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
-                      sh_min_spacing, sh_cutout_start_z);
+                              sh_group_count, sh_samples_per_group, sh_group_spacing,
+                              sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                              sh_label_width, sh_label_height, sh_label_thickness,
+                              sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count);
     }
+}
+
+module mw_assembly_view() {
+    // Combined assembly view for preview
+    mw_plate_1();
+    
+    if (sh_generate_labels && sh_enable_labels && (sh_enable_grouping || sh_algorithm_type == 2)) {
+        translate([0, 0, 30]) // Move labels above the main holder for visibility
+            mw_plate_2();
+    }
+}
+
+// Default view - show assembly unless generate_labels is specifically enabled
+if (sh_generate_labels) {
+    // When generating labels, show only the plates (for 3MF export)
+    mw_plate_1();
+    translate([200, 0, 0]) mw_plate_2(); // Separate plates for printing
+} else {
+    // Normal preview mode - show assembly
+    mw_assembly_view();
 }
 
 // Display information
