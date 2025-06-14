@@ -1,6 +1,6 @@
 use <../vallidation.scad>
 
-module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, enable_labels=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2) {
+module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, enable_labels=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
   
     interior_width = (box_width * l_grid) - (2 * wall_thickness);
     interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);

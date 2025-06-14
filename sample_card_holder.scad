@@ -91,6 +91,16 @@ sh_magnet_diameter = 6.0; // [3:0.5:15]
 sh_magnet_thickness = 2.0; // [0.5:0.1:5]
 sh_magnet_count = 2; // [1:1:6]
 
+/* [Text Styling] */
+// Text style on labels
+sh_text_style = "embossed"; // [embossed, debossed, inset]
+// Depth/height of text (positive for embossed/debossed, negative for inset)
+sh_text_depth = 0.4; // [0.1:0.05:1.0]
+// Font size in mm (0 = auto-calculate based on label size)
+sh_font_size = 0; // [0:0.5:10]
+// Font family and style
+sh_font_family = "Liberation Sans:style=Bold";
+
 // Assert validation
 assert(sh_min_spacing >= 0.5, "Minimum spacing must be at least 0.5mm to ensure proper cutout separation and ease of printing.");
 
@@ -109,7 +119,8 @@ module mw_plate_1() {
                        sh_group_count, sh_samples_per_group, sh_group_spacing,
                        sh_enable_labels, sh_label_text_mode, sh_label_custom_text, sh_label_position,
                        sh_label_width, sh_label_height, sh_label_thickness,
-                       sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count);
+                       sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
+                       sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
         } else if (sh_algorithm_type == 1) {
             grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
                                   sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
@@ -132,7 +143,8 @@ module mw_plate_2() {
                               sh_group_count, sh_samples_per_group, sh_group_spacing,
                               sh_label_text_mode, sh_label_custom_text, sh_label_position,
                               sh_label_width, sh_label_height, sh_label_thickness,
-                              sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count);
+                              sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
+                              sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
     }
 }
 

@@ -4,7 +4,7 @@
 use <algorithms/grouped_v2.scad>
 
 // Generate physical 3D label objects for printing
-module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2) {
+module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
     
     interior_width = (box_width * l_grid) - (2 * wall_thickness);
     interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -40,7 +40,8 @@ module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thi
                 // Create the physical label at the calculated position
                 translate([label_x, label_y, 0]) 
                     create_physical_label(label_text, is_rotated, label_width, label_height, label_thickness,
-                                        magnet_diameter, magnet_thickness, magnet_count);
+                                        magnet_diameter, magnet_thickness, magnet_count,
+                                        text_style, text_depth, font_size, font_family);
             }
         } else {
             echo("No label positions found - check grouping settings");
@@ -51,38 +52,92 @@ module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thi
 }
 
 // Create a single physical label with text and magnet holes
-module create_physical_label(text, is_rotated, label_width, label_height, label_thickness, magnet_diameter, magnet_thickness, magnet_count) {
+module create_physical_label(text, is_rotated, label_width, label_height, label_thickness, magnet_diameter, magnet_thickness, magnet_count, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
     
     // Adjust label dimensions based on rotation
     actual_width = is_rotated ? label_height : label_width;
     actual_height = is_rotated ? label_width : label_height;
     
+    // Calculate font size if auto (0)
+    calculated_font_size = font_size > 0 ? font_size : min(actual_width * 0.15, actual_height * 0.3);
+    
+    // Fix text rotation - invert the rotation for better readability
+    // When samples are rotated (wide along X), text should NOT be rotated
+    // When samples are normal (narrow along X), text should be rotated 90 degrees
+    text_rotation = is_rotated ? 0 : 90;
+    
+    echo(str("Label: text='", text, "', is_rotated=", is_rotated, ", text_rotation=", text_rotation, ", style=", text_style));
+    
     color("orange", 0.8) 
-    difference() {
+    union() {
         // Main label body
-        translate([-actual_width/2, -actual_height/2, 0])
-            cube([actual_width, actual_height, label_thickness]);
-        
-        // Subtract magnet holes
-        magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
-        
-        for (i = [0:len(magnet_positions)-1]) {
-            magnet_pos = magnet_positions[i];
-            magnet_x_offset = magnet_pos[0];
-            magnet_y_offset = magnet_pos[1];
+        difference() {
+            translate([-actual_width/2, -actual_height/2, 0])
+                cube([actual_width, actual_height, label_thickness]);
             
-            translate([magnet_x_offset, magnet_y_offset, -0.1]) {
-                cylinder(d=magnet_diameter, h=magnet_thickness + 0.2);
+            // Subtract magnet holes
+            magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+            
+            for (i = [0:len(magnet_positions)-1]) {
+                magnet_pos = magnet_positions[i];
+                magnet_x_offset = magnet_pos[0];
+                magnet_y_offset = magnet_pos[1];
+                
+                translate([magnet_x_offset, magnet_y_offset, -0.1]) {
+                    cylinder(d=magnet_diameter, h=magnet_thickness + 0.2);
+                }
+            }
+            
+            // Debossed text (carved into surface)
+            if (text_style == "debossed") {
+                translate([0, 0, label_thickness - text_depth + 0.01]) {
+                    linear_extrude(height = text_depth + 0.1) {
+                        rotate([0, 0, text_rotation]) {
+                            text(text, size = calculated_font_size, 
+                                 halign = "center", valign = "center", 
+                                 font = font_family);
+                        }
+                    }
+                }
+            }
+            
+            // Inset text (cutout for different colored insert)
+            if (text_style == "inset") {
+                translate([0, 0, label_thickness - text_depth + 0.01]) {
+                    linear_extrude(height = text_depth + 0.1) {
+                        rotate([0, 0, text_rotation]) {
+                            text(text, size = calculated_font_size, 
+                                 halign = "center", valign = "center", 
+                                 font = font_family);
+                        }
+                    }
+                }
             }
         }
         
-        // Add text (embossed/raised text on top surface)
-        translate([0, 0, label_thickness - 0.3]) {
-            linear_extrude(height = 0.4) {
-                rotate([0, 0, is_rotated ? 90 : 0]) {
-                    text(text, size = min(actual_width * 0.15, actual_height * 0.3), 
-                         halign = "center", valign = "center", 
-                         font = "Liberation Sans:style=Bold");
+        // Embossed text (raised above surface)
+        if (text_style == "embossed") {
+            translate([0, 0, label_thickness]) {
+                linear_extrude(height = text_depth) {
+                    rotate([0, 0, text_rotation]) {
+                        text(text, size = calculated_font_size, 
+                             halign = "center", valign = "center", 
+                             font = font_family);
+                    }
+                }
+            }
+        }
+        
+        // Inset text as a separate colored object (for multi-material printing)
+        if (text_style == "inset") {
+            color("white") 
+            translate([0, 0, label_thickness - text_depth]) {
+                linear_extrude(height = text_depth) {
+                    rotate([0, 0, text_rotation]) {
+                        text(text, size = calculated_font_size, 
+                             halign = "center", valign = "center", 
+                             font = font_family);
+                    }
                 }
             }
         }
