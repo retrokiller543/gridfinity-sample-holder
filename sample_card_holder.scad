@@ -89,7 +89,7 @@ sh_label_thickness = 1.5; // [0.5:0.1:5]
 // Magnet system for removable labels
 sh_magnet_diameter = 6.0; // [3:0.5:15]
 sh_magnet_thickness = 2.0; // [0.5:0.1:5]
-sh_magnet_count = 2; // [1:1:6]
+sh_magnet_count = 1; // [1:1:6]
 
 /* [Text Styling] */
 // Text style on labels

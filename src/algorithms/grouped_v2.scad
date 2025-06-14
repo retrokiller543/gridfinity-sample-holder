@@ -727,53 +727,63 @@ function group_positions_by_id(positions) =
     )
     grouped;
 
-// Group groups by rows (groups with similar Y coordinates)
+// Group groups by rows (axis-aware based on sample orientation)
 function group_by_rows(groups_info) =
+    len(groups_info) == 0 ? [] :
     let(
-        // Sort groups by Y coordinate first, then by X coordinate
-        sorted_groups = sort_groups_by_position(groups_info),
+        // Check sample orientation from first group
+        first_group = groups_info[0],
+        is_rotated = first_group[7],
         
-        // Group by similar Y coordinates (within tolerance)
-        row_tolerance = 5.0,  // Groups within 5mm Y distance are considered same row
-        rows = group_by_y_coordinate(sorted_groups, row_tolerance),
+        // Sort groups by primary coordinate (Y for normal, X for rotated), then by secondary coordinate
+        sorted_groups = sort_groups_by_position(groups_info, is_rotated),
         
-        row_debug_msg = str("Grouped into ", len(rows), " rows")
+        // Group by similar coordinates along the secondary axis (within tolerance)
+        row_tolerance = 1.0,  // Groups within 1mm distance are considered same row
+        rows = is_rotated ? 
+            group_by_x_coordinate(sorted_groups, row_tolerance) :  // When rotated, group by X (columns become rows)
+            group_by_y_coordinate(sorted_groups, row_tolerance),   // When normal, group by Y (rows)
+        
+        row_debug_msg = str("Grouped into ", len(rows), " ", is_rotated ? "columns" : "rows")
     )
     echo(row_debug_msg)
     rows;
 
-// Sort groups by Y coordinate, then by X coordinate
-function sort_groups_by_position(groups_info) =
+// Sort groups by position (axis-aware)
+function sort_groups_by_position(groups_info, is_rotated) =
     // Simple bubble sort for groups - [group_id, center_x, center_y, min_x, max_x, min_y, max_y, is_rotated]
     len(groups_info) <= 1 ? groups_info :
     let(
-        sorted = bubble_sort_groups(groups_info, len(groups_info))
+        sorted = bubble_sort_groups(groups_info, len(groups_info), is_rotated)
     )
     sorted;
 
-// Bubble sort implementation for groups
-function bubble_sort_groups(groups, n) =
+// Bubble sort implementation for groups (axis-aware)
+function bubble_sort_groups(groups, n, is_rotated) =
     n <= 1 ? groups :
     let(
-        swapped_groups = bubble_sort_pass(groups, n-1),
+        swapped_groups = bubble_sort_pass(groups, n-1, is_rotated),
         has_swapped = !arrays_equal(groups, swapped_groups)
     )
-    has_swapped ? bubble_sort_groups(swapped_groups, n) : groups;
+    has_swapped ? bubble_sort_groups(swapped_groups, n, is_rotated) : groups;
 
-// Single pass of bubble sort
-function bubble_sort_pass(groups, n) =
+// Single pass of bubble sort (axis-aware)
+function bubble_sort_pass(groups, n, is_rotated) =
     n <= 0 ? groups :
     let(
         current = groups[n],
         previous = groups[n-1],
         
-        // Compare by Y first, then by X
-        current_y = current[2],
-        current_x = current[1],
-        previous_y = previous[2],
-        previous_x = previous[1],
+        // For axis-aware sorting:
+        // Normal orientation: sort by Y (grouping direction), then by X (within row)  
+        // Rotated orientation: sort by X (grouping direction), then by Y (within column)
+        current_primary = is_rotated ? current[1] : current[2],   // X for rotated, Y for normal
+        current_secondary = is_rotated ? current[2] : current[1], // Y for rotated, X for normal
+        previous_primary = is_rotated ? previous[1] : previous[2],
+        previous_secondary = is_rotated ? previous[2] : previous[1],
         
-        should_swap = (current_y < previous_y) || (current_y == previous_y && current_x < previous_x),
+        should_swap = (current_primary < previous_primary) || 
+                     (current_primary == previous_primary && current_secondary < previous_secondary),
         
         updated_groups = should_swap ? 
             concat(
@@ -783,7 +793,7 @@ function bubble_sort_pass(groups, n) =
                 [for (i = [n+1:len(groups)-1]) groups[i]]
             ) : groups
     )
-    bubble_sort_pass(updated_groups, n-1);
+    bubble_sort_pass(updated_groups, n-1, is_rotated);
 
 // Check if two arrays are equal
 function arrays_equal(a, b) =
@@ -805,10 +815,70 @@ function group_by_y_coordinate(sorted_groups, tolerance) =
         // Sort current row by X coordinate
         sorted_current_row = sort_row_by_x(current_row),
         
-        row_msg = str("Row at Y=", first_y, ": ", len(sorted_current_row), " groups")
+        group_ids_in_row = [for (group = sorted_current_row) group[0]],
+        row_msg = str("Row at Y=", first_y, ": ", len(sorted_current_row), " groups (IDs: ", group_ids_in_row, ")")
     )
     echo(row_msg)
     concat([sorted_current_row], group_by_y_coordinate(remaining_groups, tolerance));
+
+// Group groups by X coordinate within tolerance (for rotated samples)
+function group_by_x_coordinate(sorted_groups, tolerance) =
+    len(sorted_groups) == 0 ? [] :
+    let(
+        first_group = sorted_groups[0],
+        first_x = first_group[1],
+        
+        // Find all groups with similar X coordinate
+        current_col = [for (group = sorted_groups) if (abs(group[1] - first_x) <= tolerance) group],
+        remaining_groups = [for (group = sorted_groups) if (abs(group[1] - first_x) > tolerance) group],
+        
+        // Sort current column by Y coordinate
+        sorted_current_col = sort_col_by_y(current_col),
+        
+        group_ids_in_col = [for (group = sorted_current_col) group[0]],
+        col_msg = str("Column at X=", first_x, ": ", len(sorted_current_col), " groups (IDs: ", group_ids_in_col, ")")
+    )
+    echo(col_msg)
+    concat([sorted_current_col], group_by_x_coordinate(remaining_groups, tolerance));
+
+// Sort a column of groups by Y coordinate (for rotated samples)
+function sort_col_by_y(col_groups) =
+    len(col_groups) <= 1 ? col_groups :
+    let(
+        // Simple insertion sort by Y coordinate
+        sorted = [col_groups[0]],
+        remaining = [for (i = [1:len(col_groups)-1]) col_groups[i]]
+    )
+    insert_sort_by_y(sorted, remaining);
+
+// Insertion sort by Y coordinate
+function insert_sort_by_y(sorted, remaining) =
+    len(remaining) == 0 ? sorted :
+    let(
+        next_group = remaining[0],
+        rest = [for (i = [1:len(remaining)-1]) remaining[i]],
+        
+        // Find insertion point
+        insertion_point = find_insertion_point_y(sorted, next_group[2]),
+        
+        // Insert at the correct position
+        new_sorted = concat(
+            [for (i = [0:insertion_point-1]) sorted[i]],
+            [next_group],
+            [for (i = [insertion_point:len(sorted)-1]) sorted[i]]
+        )
+    )
+    insert_sort_by_y(new_sorted, rest);
+
+// Find insertion point for Y coordinate
+function find_insertion_point_y(sorted, y_coord) =
+    len(sorted) == 0 ? 0 :
+    find_insertion_point_y_recursive(sorted, y_coord, 0);
+
+function find_insertion_point_y_recursive(sorted, y_coord, index) =
+    index >= len(sorted) ? index :
+    sorted[index][2] > y_coord ? index :
+    find_insertion_point_y_recursive(sorted, y_coord, index + 1);
 
 // Sort a row of groups by X coordinate
 function sort_row_by_x(row_groups) =
@@ -864,31 +934,25 @@ function calculate_single_label_position(group1, group2, group_spacing, label_po
         group2_min_x = group2[3],
         group2_is_rotated = group2[7],
         
-        // Calculate spacing between groups
-        spacing_start_x = group1_max_x,
-        spacing_end_x = group2_min_x,
-        available_spacing = spacing_end_x - spacing_start_x,
+        // Calculate spacing between groups (axis-aware)
+        // For normal samples: groups are horizontally adjacent, spacing is in X direction
+        // For rotated samples: groups are vertically adjacent, spacing is in Y direction
+        spacing_start = group1_is_rotated ? group1[6] : group1[4],  // max_y for rotated, max_x for normal
+        spacing_end = group1_is_rotated ? group2[5] : group2[3],    // min_y for rotated, min_x for normal
+        available_spacing = spacing_end - spacing_start,
         
         spacing_msg = str("Groups ", group1_id, "-", group2_id, ": spacing=", available_spacing, ", label_width=", label_width)
     )
     echo(spacing_msg)
     available_spacing < label_width ? undef :  // Label doesn't fit
     let(
-        // Calculate label X position within the spacing (always centered in the spacing between groups)
-        label_x = (spacing_start_x + spacing_end_x) / 2,
+        // Calculate label position within the spacing (axis-aware)
+        label_primary_pos = (spacing_start + spacing_end) / 2,  // Center of spacing
         
-        // Calculate label Y position within the row based on label_position setting
-        row_center_y = group1_center_y,  // Groups in same row should have same Y
-        sample_depth_in_orientation = group1_is_rotated ? sample_thickness : sample_width,
-        
-        // Calculate row bounds (front and back edges of the row)
-        row_front_y = row_center_y - sample_depth_in_orientation/2,
-        row_back_y = row_center_y + sample_depth_in_orientation/2,
-        
-        // Position label within the row based on user preference
-        label_y = label_position == "start" ? row_front_y + label_height/2 :
-                 label_position == "end" ? row_back_y - label_height/2 :
-                 row_center_y,  // center
+        // For normal samples: label X is in the spacing, Y is row center
+        // For rotated samples: label Y is in the spacing, X is column center  
+        label_x = group1_is_rotated ? group1_center_x : label_primary_pos,
+        label_y = group1_is_rotated ? label_primary_pos : group1_center_y,
         
         // Use the same rotation as the samples
         label_is_rotated = group1_is_rotated
@@ -917,15 +981,23 @@ function calculate_magnet_positions(label_width, label_height, magnet_count, is_
     magnet_count == 1 ? 
         [[0, 0]] :  // Single magnet at center
     magnet_count == 2 ?
-        // Two magnets along the width
+        // Two magnets distributed along the longer dimension of the label
+        // When samples are rotated, label spans along depth (Y), otherwise along width (X)
         let(
-            spacing = label_width * 0.6,  // 60% of width between magnets
+            // Choose the dimension to distribute magnets along based on sample orientation
+            primary_dimension = is_rotated ? label_height : label_width,
+            spacing = primary_dimension * 0.6,  // 60% of primary dimension between magnets
             offset = spacing / 2
         )
-        [[-offset, 0], [offset, 0]] :
-    // For more magnets, distribute them evenly along the width
+        is_rotated ? 
+            [[0, -offset], [0, offset]] :  // Distribute along Y when rotated
+            [[-offset, 0], [offset, 0]] :   // Distribute along X when normal
+    // For more magnets, distribute them evenly along the primary dimension
     let(
-        spacing = label_width * 0.8 / (magnet_count - 1),  // 80% of width span
-        start_offset = -label_width * 0.4
+        primary_dimension = is_rotated ? label_height : label_width,
+        spacing = primary_dimension * 0.8 / (magnet_count - 1),  // 80% of primary dimension span
+        start_offset = -primary_dimension * 0.4
     )
-    [for (i = [0:magnet_count-1]) [start_offset + i * spacing, 0]];
+    is_rotated ?
+        [for (i = [0:magnet_count-1]) [0, start_offset + i * spacing]] :  // Along Y when rotated
+        [for (i = [0:magnet_count-1]) [start_offset + i * spacing, 0]];   // Along X when normal

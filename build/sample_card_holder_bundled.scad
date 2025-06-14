@@ -14,11 +14,11 @@ sh_box_height = 21; // [15:0.2:50]
 
 /* [Sample Dimensions] */
 // Width of each sample card in millimeters
-sh_sample_width = 76; // [50:1:100]
+sh_sample_width = 76; // [20:1:300]
 // Height of each sample card in millimeters (for reference only)
 sh_sample_height = 15; // [10:1:25]
 // Thickness of each sample card in millimeters
-sh_sample_thickness = 2.4; // [1:0.1:5]
+sh_sample_thickness = 2.4; // [1:0.1:10]
 
 /* [Gridfinity Settings] */
 // Grid unit size in mm (standard gridfinity is 42mm)
@@ -50,33 +50,75 @@ sh_row_spacing = 0; // [0:0.1:20]
 // Enable group-based layout (instead of row-based)
 sh_enable_grouping = false; // [true, false]
 // Number of groups to create (0 = auto-calculate)
-sh_group_count = 0; // [0:1:20]
+sh_group_count = 0; // [0:1:100]
 // Number of samples per group (0 = auto-calculate)
-sh_samples_per_group = 0; // [0:1:50]
+sh_samples_per_group = 0; // [0:1:100]
 // Spacing between groups in millimeters
-sh_group_spacing = 3.0; // [1:0.1:10]
+sh_group_spacing = 10.0; // [1:0.1:100]
 
-// Main model - create solid gridfinity box without lip, then subtract cutouts
-color("lightgray") 
-difference() {
-    gridfinity_box(sh_box_width, sh_box_depth, sh_box_height, l_grid, style_lip, style_hole, cut_to_height=true);
-    
-    // Subtract sample cutouts from the top
-    // Use advanced algorithm when grouping is enabled OR when explicitly selected
-    if (sh_enable_grouping || sh_algorithm_type == 2) {
-        grouped_v2(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
-                   sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
-                   sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
-                   sh_group_count, sh_samples_per_group, sh_group_spacing);
-    } else if (sh_algorithm_type == 1) {
-        grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
-                              sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
-                              sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
-                              sh_group_count, sh_samples_per_group, sh_group_spacing);
-    } else {
-        sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
-                      sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
-                      sh_min_spacing, sh_cutout_start_z);
+/* [Group Label Settings] */
+// === Label System ===
+// Enable magnetic removable labels between groups
+sh_enable_labels = false; // [true, false]
+// Generate separate label objects for printing
+sh_generate_labels = false; // [true, false]
+// Label text mode: auto generates G1, G2, etc., custom uses provided text
+sh_label_text_mode = "auto"; // [auto, custom]
+// Custom label text (comma-separated for multiple groups, e.g., "Sample A,Sample B,Sample C")
+sh_label_custom_text = "Group 1,Group 2,Group 3";
+// Label position within group spacing area
+sh_label_position = "center"; // [start, center, end]
+// Label dimensions in millimeters
+sh_label_width = 10.0; // [3:0.5:100]
+sh_label_height = 8.0; // [3:0.5:300]
+sh_label_thickness = 1.5; // [0.5:0.1:5]
+
+/* [Magnet Settings] */
+// Magnet system for removable labels
+sh_magnet_diameter = 6.0; // [3:0.5:15]
+sh_magnet_thickness = 2.0; // [0.5:0.1:5]
+sh_magnet_count = 1; // [1:1:6]
+
+/* [Text Styling] */
+// Text style on labels
+sh_text_style = "embossed"; // [embossed, debossed, inset]
+// Depth/height of text (positive for embossed/debossed, negative for inset)
+sh_text_depth = 0.4; // [0.1:0.05:1.0]
+// Font size in mm (0 = auto-calculate based on label size)
+sh_font_size = 0; // [0:0.5:10]
+// Font family and style
+sh_font_family = "Liberation Sans:style=Bold";
+
+// Assert validation
+assert(sh_min_spacing >= 0.5, "Minimum spacing must be at least 0.5mm to ensure proper cutout separation and ease of printing.");
+
+// Multi-plate 3MF generation modules (following Bambu Lab guide)
+module mw_plate_1() {
+    // Main gridfinity holder
+    color("lightgray") 
+    difference() {
+        gridfinity_box(sh_box_width, sh_box_depth, sh_box_height, l_grid, style_lip, style_hole, cut_to_height=true);
+        
+        // Subtract sample cutouts from the top
+        if (sh_enable_grouping || sh_algorithm_type == 2) {
+            grouped_v2(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                       sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                       sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
+                       sh_group_count, sh_samples_per_group, sh_group_spacing,
+                       sh_enable_labels, sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                       sh_label_width, sh_label_height, sh_label_thickness,
+                       sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
+                       sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
+        } else if (sh_algorithm_type == 1) {
+            grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                                  sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                                  sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
+                                  sh_group_count, sh_samples_per_group, sh_group_spacing);
+        } else {
+            sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                          sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                          sh_min_spacing, sh_cutout_start_z);
+        }
     }
 }
 
@@ -663,7 +705,7 @@ difference() {
     // ===== End: vallidation.scad =====
 
   
-  module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0) {
+  module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, enable_labels=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
     
       interior_width = (box_width * l_grid) - (2 * wall_thickness);
       interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -673,6 +715,7 @@ difference() {
       echo(str("Sample size: ", sample_thickness, " x ", sample_width, " mm"));
       echo(str("Enable grouping: ", enable_grouping));
       echo(str("Group count: ", group_count, ", Samples per group: ", samples_per_group));
+      echo(str("Enable labels: ", enable_labels, ", Mode: ", label_text_mode, ", Position: ", label_position));
       echo(str("Sample fits normal (", sample_thickness, "x", sample_width, "): width=", sample_thickness <= interior_width, " depth=", sample_width <= interior_depth));
       echo(str("Sample fits rotated (", sample_width, "x", sample_thickness, "): width=", sample_width <= interior_width, " depth=", sample_thickness <= interior_depth));
   
@@ -694,6 +737,29 @@ difference() {
           
           translate([pos_x, pos_y, box_height - (box_height - cutout_start_z)]) 
               sample_cutout_shape(is_rotated, sample_width, sample_thickness, box_height, cutout_start_z);
+      }
+      
+      // Generate label magnet holes if labels are enabled - this is the final step
+      if (enable_labels && len(positions) > 0) {
+          // Now positions contains ALL final sample positions across all rows
+          label_positions = calculate_label_positions(positions, group_spacing, label_position, 
+                                                     label_width, label_height, sample_width, sample_thickness);
+          
+          if (len(label_positions) > 0) {
+              echo(str("Generated ", len(label_positions), " label positions"));
+              
+              for (i = [0:len(label_positions)-1]) {
+                  label_pos = label_positions[i];
+                  label_x = label_pos[0];
+                  label_y = label_pos[1];
+                  is_rotated = label_pos[2];
+                  
+                  // Create magnet holes for this label
+                  create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, 
+                                          magnet_diameter, magnet_thickness, magnet_count, 
+                                          box_height, cutout_start_z);
+              }
+          }
       }
   }
   
@@ -794,6 +860,12 @@ difference() {
           samples_along_depth = floor(interior_depth / (sample_d + min_spacing)),
           group_along_width = samples_along_width >= samples_along_depth,
           
+          grouping_msg = str("    Grouping analysis: samples_along_width=", samples_along_width, 
+                            ", samples_along_depth=", samples_along_depth, 
+                            ", grouping_direction=", group_along_width ? "width" : "depth")
+      )
+      echo(grouping_msg)
+      let(
           // Calculate layout based on grouping direction
           layout_data = group_along_width ?
               generate_width_grouped_layout(interior_width, interior_depth, sample_w, sample_d, 
@@ -869,20 +941,28 @@ difference() {
               for (y_data = first_col_y_positions)
                   let(
                       y_pos = y_data[0],
-                      group_id = y_data[1]
+                      original_group_id = y_data[1],
+                      // Make group_id unique across columns by adding column offset
+                      max_groups_per_col = max([for (data = first_col_y_positions) data[1]]) + 1,
+                      unique_group_id = original_group_id + (col_idx * max_groups_per_col)
                   )
-                  [col_x, y_pos, use_rotated, group_id]
+                  [col_x, y_pos, use_rotated, unique_group_id]
       ];
   
   function generate_first_row_positions(interior_width, sample_width, min_spacing, group_count, samples_per_group, group_spacing) =
       let(
           max_samples_per_row = floor(interior_width / (sample_width + min_spacing)),
           
-          debug_msg = str("    Max samples per row: ", max_samples_per_row, " (width: ", interior_width, ", sample: ", sample_width, ")")
+          debug_msg = str("    Max samples per row: ", max_samples_per_row, " (width: ", interior_width, ", sample: ", sample_width, ", min_spacing: ", min_spacing, ")")
       )
       echo(debug_msg)
       let(
           // Auto-calculate group settings if not specified
+          grouping_mode_msg = str("    Grouping mode: ", group_count == 0 ? "auto" : "manual", 
+                                 " (requested: groups=", group_count, ", samples_per_group=", samples_per_group, ")")
+      )
+      echo(grouping_mode_msg)
+      let(
           auto_data = group_count == 0 ? 
               calculate_auto_grouping(max_samples_per_row, sample_width, min_spacing, group_spacing, interior_width, samples_per_group) :
               [group_count, samples_per_group > 0 ? samples_per_group : max(1, floor(max_samples_per_row / group_count))],
@@ -890,13 +970,13 @@ difference() {
           effective_group_count = auto_data[0],
           effective_samples_per_group = auto_data[1],
           
-          debug_msg2 = str("    Groups: ", effective_group_count, ", samples per group: ", effective_samples_per_group)
+          debug_msg2 = str("    Effective groups: ", effective_group_count, ", samples per group: ", effective_samples_per_group)
       )
       echo(debug_msg2)
       let(
-          // Generate positions for each group
+          // Generate positions for each group - pass original samples_per_group to preserve user intent
           group_data = generate_groups_in_row(effective_group_count, effective_samples_per_group, 
-                                            sample_width, min_spacing, group_spacing, interior_width),
+                                            sample_width, min_spacing, group_spacing, interior_width, samples_per_group, group_count),
           positions = group_data[0],
           total_width = group_data[1]
       )
@@ -957,11 +1037,11 @@ difference() {
           )
           find_max_fitting_groups(max_possible_groups, samples_per_group, sample_width, min_spacing, group_spacing, interior_width);
   
-  function generate_groups_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+  function generate_groups_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0) =
       let(
           // Try to fit all requested groups first
           positions_data = try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, 
-                                                        min_spacing, group_spacing, interior_width),
+                                                        min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count),
           positions = positions_data[0],
           actual_group_count = positions_data[1],
           actual_samples_per_group = positions_data[2],
@@ -971,35 +1051,90 @@ difference() {
       )
       [positions, actual_width];
   
-  function try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+  function try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0) =
       let(
           // First try with requested settings
-          fits_as_requested = check_groups_fit_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width)
+          fits_as_requested = check_groups_fit_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width),
+          
+          total_width_needed = group_count * samples_per_group * sample_width + 
+                             group_count * max(0, samples_per_group - 1) * min_spacing + 
+                             max(0, group_count - 1) * group_spacing,
+          
+          fit_msg = str("      Initial fit check: groups=", group_count, ", samples_per_group=", samples_per_group, 
+                       ", width_needed=", total_width_needed, ", available=", interior_width, ", fits=", fits_as_requested)
       )
+      echo(fit_msg)
       fits_as_requested ? 
-          // If it fits, generate positions as requested
-          [generate_group_positions(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width), 
-           group_count, samples_per_group] :
+          // If it fits, check if we should try to add partial groups (when group_count was auto-calculated)
+          let(
+              auto_group_mode = original_group_count == 0,
+              success_msg = str("      ✓ Groups fit as requested - auto_group_mode=", auto_group_mode)
+          )
+          echo(success_msg)
+          auto_group_mode ?
+              // In auto-group mode, try to add one more group (will create partial group if space allows)
+              let(
+                  auto_partial_msg = str("      Auto-group mode: trying ", group_count + 1, " groups to maximize usage")
+              )
+              echo(auto_partial_msg)
+              fit_partial_groups(group_count + 1, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count) :
+              // In manual mode, just generate positions as requested
+              [generate_group_positions(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width), 
+               group_count, samples_per_group] :
           // If it doesn't fit, try reducing samples per group first, then group count
-          adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width);
+          let(
+              adjust_msg = str("      ✗ Groups don't fit - starting adjustment process")
+          )
+          echo(adjust_msg)
+          adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count);
   
-  function adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+  function adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0) =
       let(
-          // First try to keep all groups, reduce samples per group to fit
-          adjusted_samples = find_max_samples_per_group_for_groups(group_count, sample_width, min_spacing, group_spacing, interior_width)
+          // When user specifies samples_per_group > 0, respect it and go directly to partial groups
+          // Only allow reduction of samples_per_group when it was auto-calculated (samples_per_group == 0 originally)
+          respect_user_samples = original_samples_per_group > 0,
+          
+          respect_msg = str("        Original samples_per_group=", original_samples_per_group, ", effective=", samples_per_group, ", respect_user_samples=", respect_user_samples)
       )
-      adjusted_samples > 0 ?
-          // If we can fit all groups with fewer samples per group, do that
-          [generate_group_positions(group_count, adjusted_samples, sample_width, min_spacing, group_spacing, interior_width),
-           group_count, adjusted_samples] :
-          // If groups don't fit, find how many complete groups + partial group we can fit
-          fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width);
+      echo(respect_msg)
+      respect_user_samples ?
+          // User specified samples per group - go directly to partial groups to maintain sample count
+          let(
+              partial_msg = str("        ✗ Respecting user's samples_per_group=", samples_per_group, " - using partial groups")
+          )
+          echo(partial_msg)
+          fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count) :
+          // Auto-calculated samples per group - we can adjust it
+          let(
+              adjusted_samples = find_max_samples_per_group_for_groups(group_count, sample_width, min_spacing, group_spacing, interior_width),
+              
+              adjust_samples_msg = str("        Auto-calculated mode: trying to keep all ", group_count, " groups: max_samples_per_group=", adjusted_samples)
+          )
+          echo(adjust_samples_msg)
+          adjusted_samples > 0 ?
+              // If we can fit all groups with fewer samples per group, do that
+              let(
+                  samples_adjust_msg = str("        ✓ Adjusted samples per group from ", samples_per_group, " to ", adjusted_samples, " - keeping all ", group_count, " groups")
+              )
+              echo(samples_adjust_msg)
+              [generate_group_positions(group_count, adjusted_samples, sample_width, min_spacing, group_spacing, interior_width),
+               group_count, adjusted_samples] :
+              // If groups don't fit, find how many complete groups + partial group we can fit
+              let(
+                  partial_msg = str("        ✗ Can't fit all ", group_count, " groups - trying partial groups")
+              )
+              echo(partial_msg)
+              fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count);
   
-  function fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+  function fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0) =
       let(
           // Find the maximum number of complete groups that fit
           max_complete_groups = find_max_fitting_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width),
           
+          complete_groups_msg = str("          Max complete groups that fit: ", max_complete_groups, " out of ", group_count, " requested")
+      )
+      echo(complete_groups_msg)
+      let(
           // Calculate space used by complete groups
           complete_groups_width = max_complete_groups > 0 ? 
               calculate_actual_width(max_complete_groups, samples_per_group, sample_width, min_spacing, group_spacing) : 0,
@@ -1007,22 +1142,42 @@ difference() {
           // Calculate remaining space for partial group
           remaining_width = interior_width - complete_groups_width - (max_complete_groups > 0 ? group_spacing : 0),
           
+          space_calc_msg = str("          Space calculation: complete_groups_width=", complete_groups_width, 
+                              ", remaining_width=", remaining_width, " (interior=", interior_width, ")")
+      )
+      echo(space_calc_msg)
+      let(
           // Calculate how many samples fit in the remaining space (partial group)
           partial_group_samples = remaining_width > sample_width ? 
               samples_fit_in_dimension(remaining_width, sample_width, min_spacing) : 0,
           
+          partial_calc_msg = str("          Partial group calculation: remaining_width=", remaining_width, 
+                                ", sample_width=", sample_width, ", partial_samples=", partial_group_samples)
+      )
+      echo(partial_calc_msg)
+      let(
           // Total groups (complete + partial if any)
           total_groups = max_complete_groups + (partial_group_samples > 0 ? 1 : 0),
           
-          debug_msg = str("    Partial fit: ", max_complete_groups, " complete groups, ", partial_group_samples, " in partial group")
+          debug_msg = str("          Final partial fit: ", max_complete_groups, " complete groups (", samples_per_group, " each), ", 
+                         partial_group_samples, " in partial group = ", total_groups, " total groups")
       )
       echo(debug_msg)
       total_groups > 0 ?
           // Generate positions for complete groups + partial group
+          let(
+              generation_msg = str("          Generating mixed positions: ", max_complete_groups, " complete + ", 
+                                  (partial_group_samples > 0 ? 1 : 0), " partial = ", total_groups, " groups")
+          )
+          echo(generation_msg)
           [generate_mixed_group_positions(max_complete_groups, samples_per_group, partial_group_samples, 
                                          sample_width, min_spacing, group_spacing, interior_width),
            total_groups, samples_per_group] :
           // If nothing fits, return empty
+          let(
+              fail_msg = str("          ✗ No groups fit at all - returning empty")
+          )
+          echo(fail_msg)
           [[], 0, 0];
   
   function generate_individual_sample_positions(num_samples, sample_width, min_spacing, interior_width) =
@@ -1050,13 +1205,26 @@ difference() {
           total_group_spacing = (complete_groups > 0 && partial_group_samples > 0) ? group_spacing : 0,
           total_layout_width = complete_width + total_group_spacing + partial_width,
           
+          layout_msg = str("            Layout widths: complete=", complete_width, ", partial=", partial_width, 
+                          ", spacing=", total_group_spacing, ", total=", total_layout_width)
+      )
+      echo(layout_msg)
+      let(
           // Center the entire layout
           layout_start_x = -total_layout_width / 2,
           
+          positioning_msg = str("            Positioning: layout_start_x=", layout_start_x)
+      )
+      echo(positioning_msg)
+      let(
           // Generate complete groups with adjusted positioning
           complete_positions = complete_groups > 0 ? 
               generate_group_positions_at_offset(complete_groups, samples_per_group, sample_width, min_spacing, group_spacing, layout_start_x) : [],
           
+          complete_msg = str("            Generated ", len(complete_positions), " positions from ", complete_groups, " complete groups")
+      )
+      echo(complete_msg)
+      let(
           // Calculate partial group start position
           partial_start_x = layout_start_x + complete_width + total_group_spacing + sample_width/2,
           
@@ -1064,9 +1232,19 @@ difference() {
           partial_positions = partial_group_samples > 0 ? 
               [for (i = [0:partial_group_samples-1])
                   [partial_start_x + i * (sample_width + min_spacing), complete_groups]  // group_id = complete_groups
-              ] : []
+              ] : [],
+          
+          partial_msg = str("            Generated ", len(partial_positions), " positions from partial group (", 
+                           partial_group_samples, " samples, start_x=", partial_start_x, ")")
       )
-      concat(complete_positions, partial_positions);
+      echo(partial_msg)
+      let(
+          final_positions = concat(complete_positions, partial_positions),
+          
+          final_msg = str("            Total positions generated: ", len(final_positions))
+      )
+      echo(final_msg)
+      final_positions;
   
   function generate_group_positions_at_offset(group_count, samples_per_group, sample_width, min_spacing, group_spacing, start_x_offset) =
       [
@@ -1118,8 +1296,12 @@ difference() {
   function generate_group_positions(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
       let(
           total_width = calculate_actual_width(group_count, samples_per_group, sample_width, min_spacing, group_spacing),
-          start_x = -total_width / 2
+          start_x = -total_width / 2,
+          
+          gen_msg = str("            Generating regular group positions: groups=", group_count, ", samples_per_group=", samples_per_group, 
+                       ", total_width=", total_width, ", start_x=", start_x)
       )
+      echo(gen_msg)
       [
           for (group_idx = [0:group_count-1])
               let(
@@ -1156,9 +1338,12 @@ difference() {
               for (x_data = first_row_x_positions)
                   let(
                       x_pos = x_data[0],
-                      group_id = x_data[1]
+                      original_group_id = x_data[1],
+                      // Make group_id unique across rows by adding row offset
+                      max_groups_per_row = max([for (data = first_row_x_positions) data[1]]) + 1,
+                      unique_group_id = original_group_id + (row_idx * max_groups_per_row)
                   )
-                  [x_pos, row_y, use_rotated, group_id]
+                  [x_pos, row_y, use_rotated, unique_group_id]
       ];
   
   module sample_cutout_shape(is_rotated, sample_width, sample_thickness, box_height, cutout_start_z) {
@@ -1170,7 +1355,579 @@ difference() {
       translate([-width/2, -depth/2, 0])
           cube([width, depth, cutout_height + 1]);
   }
+  
+  // Calculate label positions based on group positions and spacing
+  function calculate_label_positions(positions, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+      let(
+          // Extract groups from positions - positions format: [x, y, is_rotated, group_id]
+          groups_info = extract_group_info(positions),
+          
+          label_calc_msg = str("Label calculation: ", len(groups_info), " groups found, group_spacing=", group_spacing)
+      )
+      echo(label_calc_msg)
+      len(groups_info) < 2 ? [] :  // Need at least 2 groups to have spacing between them
+      let(
+          // Group by rows (groups with similar Y coordinates are in the same row)
+          rows_with_groups = group_by_rows(groups_info),
+          
+          // Calculate label positions for each row
+          label_positions = [
+              for (row = rows_with_groups)
+                  if (len(row) >= 2)  // Need at least 2 groups in a row for labels
+                      for (i = [0:len(row)-2])  // Between each pair of adjacent groups in this row
+                          let(
+                              group1 = row[i],
+                              group2 = row[i+1],
+                              
+                              // Calculate label position between these groups in this row
+                              label_pos = calculate_single_label_position(group1, group2, group_spacing, 
+                                                                         label_position, label_width, label_height,
+                                                                         sample_width, sample_thickness)
+                          )
+                          if (label_pos != undef) label_pos  // Only include if label fits
+          ]
+      )
+      label_positions;
+  
+  // Extract group information from positions array
+  function extract_group_info(positions) =
+      let(
+          // Group positions by group_id (positions format: [x, y, is_rotated, group_id])
+          grouped_positions = group_positions_by_id(positions),
+          
+          // Calculate bounds for each group
+          groups_info = [
+              for (group_id = [0:len(grouped_positions)-1])
+                  if (len(grouped_positions[group_id]) > 0)
+                      let(
+                          group_positions = grouped_positions[group_id],
+                          first_pos = group_positions[0],
+                          is_rotated = first_pos[2],
+                          
+                          // Calculate group bounds
+                          x_coords = [for (pos = group_positions) pos[0]],
+                          y_coords = [for (pos = group_positions) pos[1]],
+                          
+                          min_x = min(x_coords),
+                          max_x = max(x_coords),
+                          min_y = min(y_coords),
+                          max_y = max(y_coords),
+                          
+                          center_x = (min_x + max_x) / 2,
+                          center_y = (min_y + max_y) / 2
+                      )
+                      [group_id, center_x, center_y, min_x, max_x, min_y, max_y, is_rotated]
+          ]
+      )
+      groups_info;
+  
+  // Group positions by their group_id
+  function group_positions_by_id(positions) =
+      let(
+          max_group_id = max([for (pos = positions) len(pos) > 3 ? pos[3] : 0]),
+          grouped = [
+              for (group_id = [0:max_group_id])
+                  [for (pos = positions) if (len(pos) > 3 && pos[3] == group_id) pos]
+          ]
+      )
+      grouped;
+  
+  // Group groups by rows (axis-aware based on sample orientation)
+  function group_by_rows(groups_info) =
+      len(groups_info) == 0 ? [] :
+      let(
+          // Check sample orientation from first group
+          first_group = groups_info[0],
+          is_rotated = first_group[7],
+          
+          // Sort groups by primary coordinate (Y for normal, X for rotated), then by secondary coordinate
+          sorted_groups = sort_groups_by_position(groups_info, is_rotated),
+          
+          // Group by similar coordinates along the secondary axis (within tolerance)
+          row_tolerance = 1.0,  // Groups within 1mm distance are considered same row
+          rows = is_rotated ? 
+              group_by_x_coordinate(sorted_groups, row_tolerance) :  // When rotated, group by X (columns become rows)
+              group_by_y_coordinate(sorted_groups, row_tolerance),   // When normal, group by Y (rows)
+          
+          row_debug_msg = str("Grouped into ", len(rows), " ", is_rotated ? "columns" : "rows")
+      )
+      echo(row_debug_msg)
+      rows;
+  
+  // Sort groups by position (axis-aware)
+  function sort_groups_by_position(groups_info, is_rotated) =
+      // Simple bubble sort for groups - [group_id, center_x, center_y, min_x, max_x, min_y, max_y, is_rotated]
+      len(groups_info) <= 1 ? groups_info :
+      let(
+          sorted = bubble_sort_groups(groups_info, len(groups_info), is_rotated)
+      )
+      sorted;
+  
+  // Bubble sort implementation for groups (axis-aware)
+  function bubble_sort_groups(groups, n, is_rotated) =
+      n <= 1 ? groups :
+      let(
+          swapped_groups = bubble_sort_pass(groups, n-1, is_rotated),
+          has_swapped = !arrays_equal(groups, swapped_groups)
+      )
+      has_swapped ? bubble_sort_groups(swapped_groups, n, is_rotated) : groups;
+  
+  // Single pass of bubble sort (axis-aware)
+  function bubble_sort_pass(groups, n, is_rotated) =
+      n <= 0 ? groups :
+      let(
+          current = groups[n],
+          previous = groups[n-1],
+          
+          // For axis-aware sorting:
+          // Normal orientation: sort by Y (grouping direction), then by X (within row)  
+          // Rotated orientation: sort by X (grouping direction), then by Y (within column)
+          current_primary = is_rotated ? current[1] : current[2],   // X for rotated, Y for normal
+          current_secondary = is_rotated ? current[2] : current[1], // Y for rotated, X for normal
+          previous_primary = is_rotated ? previous[1] : previous[2],
+          previous_secondary = is_rotated ? previous[2] : previous[1],
+          
+          should_swap = (current_primary < previous_primary) || 
+                       (current_primary == previous_primary && current_secondary < previous_secondary),
+          
+          updated_groups = should_swap ? 
+              concat(
+                  [for (i = [0:n-2]) groups[i]],
+                  [current],
+                  [previous],
+                  [for (i = [n+1:len(groups)-1]) groups[i]]
+              ) : groups
+      )
+      bubble_sort_pass(updated_groups, n-1, is_rotated);
+  
+  // Check if two arrays are equal
+  function arrays_equal(a, b) =
+      len(a) != len(b) ? false :
+      len(a) == 0 ? true :
+      a[0] == b[0] && arrays_equal([for (i = [1:len(a)-1]) a[i]], [for (i = [1:len(b)-1]) b[i]]);
+  
+  // Group groups by Y coordinate within tolerance
+  function group_by_y_coordinate(sorted_groups, tolerance) =
+      len(sorted_groups) == 0 ? [] :
+      let(
+          first_group = sorted_groups[0],
+          first_y = first_group[2],
+          
+          // Find all groups with similar Y coordinate
+          current_row = [for (group = sorted_groups) if (abs(group[2] - first_y) <= tolerance) group],
+          remaining_groups = [for (group = sorted_groups) if (abs(group[2] - first_y) > tolerance) group],
+          
+          // Sort current row by X coordinate
+          sorted_current_row = sort_row_by_x(current_row),
+          
+          group_ids_in_row = [for (group = sorted_current_row) group[0]],
+          row_msg = str("Row at Y=", first_y, ": ", len(sorted_current_row), " groups (IDs: ", group_ids_in_row, ")")
+      )
+      echo(row_msg)
+      concat([sorted_current_row], group_by_y_coordinate(remaining_groups, tolerance));
+  
+  // Group groups by X coordinate within tolerance (for rotated samples)
+  function group_by_x_coordinate(sorted_groups, tolerance) =
+      len(sorted_groups) == 0 ? [] :
+      let(
+          first_group = sorted_groups[0],
+          first_x = first_group[1],
+          
+          // Find all groups with similar X coordinate
+          current_col = [for (group = sorted_groups) if (abs(group[1] - first_x) <= tolerance) group],
+          remaining_groups = [for (group = sorted_groups) if (abs(group[1] - first_x) > tolerance) group],
+          
+          // Sort current column by Y coordinate
+          sorted_current_col = sort_col_by_y(current_col),
+          
+          group_ids_in_col = [for (group = sorted_current_col) group[0]],
+          col_msg = str("Column at X=", first_x, ": ", len(sorted_current_col), " groups (IDs: ", group_ids_in_col, ")")
+      )
+      echo(col_msg)
+      concat([sorted_current_col], group_by_x_coordinate(remaining_groups, tolerance));
+  
+  // Sort a column of groups by Y coordinate (for rotated samples)
+  function sort_col_by_y(col_groups) =
+      len(col_groups) <= 1 ? col_groups :
+      let(
+          // Simple insertion sort by Y coordinate
+          sorted = [col_groups[0]],
+          remaining = [for (i = [1:len(col_groups)-1]) col_groups[i]]
+      )
+      insert_sort_by_y(sorted, remaining);
+  
+  // Insertion sort by Y coordinate
+  function insert_sort_by_y(sorted, remaining) =
+      len(remaining) == 0 ? sorted :
+      let(
+          next_group = remaining[0],
+          rest = [for (i = [1:len(remaining)-1]) remaining[i]],
+          
+          // Find insertion point
+          insertion_point = find_insertion_point_y(sorted, next_group[2]),
+          
+          // Insert at the correct position
+          new_sorted = concat(
+              [for (i = [0:insertion_point-1]) sorted[i]],
+              [next_group],
+              [for (i = [insertion_point:len(sorted)-1]) sorted[i]]
+          )
+      )
+      insert_sort_by_y(new_sorted, rest);
+  
+  // Find insertion point for Y coordinate
+  function find_insertion_point_y(sorted, y_coord) =
+      len(sorted) == 0 ? 0 :
+      find_insertion_point_y_recursive(sorted, y_coord, 0);
+  
+  function find_insertion_point_y_recursive(sorted, y_coord, index) =
+      index >= len(sorted) ? index :
+      sorted[index][2] > y_coord ? index :
+      find_insertion_point_y_recursive(sorted, y_coord, index + 1);
+  
+  // Sort a row of groups by X coordinate
+  function sort_row_by_x(row_groups) =
+      len(row_groups) <= 1 ? row_groups :
+      let(
+          // Simple insertion sort by X coordinate
+          sorted = [row_groups[0]],
+          remaining = [for (i = [1:len(row_groups)-1]) row_groups[i]]
+      )
+      insert_sort_by_x(sorted, remaining);
+  
+  // Insertion sort by X coordinate
+  function insert_sort_by_x(sorted, remaining) =
+      len(remaining) == 0 ? sorted :
+      let(
+          next_group = remaining[0],
+          rest = [for (i = [1:len(remaining)-1]) remaining[i]],
+          
+          // Find insertion point
+          insertion_point = find_insertion_point(sorted, next_group[1]),
+          
+          // Insert at the correct position
+          new_sorted = concat(
+              [for (i = [0:insertion_point-1]) sorted[i]],
+              [next_group],
+              [for (i = [insertion_point:len(sorted)-1]) sorted[i]]
+          )
+      )
+      insert_sort_by_x(new_sorted, rest);
+  
+  // Find insertion point for X coordinate
+  function find_insertion_point(sorted, x_coord) =
+      len(sorted) == 0 ? 0 :
+      find_insertion_point_recursive(sorted, x_coord, 0);
+  
+  function find_insertion_point_recursive(sorted, x_coord, index) =
+      index >= len(sorted) ? index :
+      sorted[index][1] > x_coord ? index :
+      find_insertion_point_recursive(sorted, x_coord, index + 1);
+  
+  // Calculate position for a single label between two groups
+  function calculate_single_label_position(group1, group2, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+      let(
+          group1_id = group1[0],
+          group1_center_x = group1[1],
+          group1_center_y = group1[2],
+          group1_max_x = group1[4],
+          group1_is_rotated = group1[7],
+          
+          group2_id = group2[0],
+          group2_center_x = group2[1], 
+          group2_center_y = group2[2],
+          group2_min_x = group2[3],
+          group2_is_rotated = group2[7],
+          
+          // Calculate spacing between groups (axis-aware)
+          // For normal samples: groups are horizontally adjacent, spacing is in X direction
+          // For rotated samples: groups are vertically adjacent, spacing is in Y direction
+          spacing_start = group1_is_rotated ? group1[6] : group1[4],  // max_y for rotated, max_x for normal
+          spacing_end = group1_is_rotated ? group2[5] : group2[3],    // min_y for rotated, min_x for normal
+          available_spacing = spacing_end - spacing_start,
+          
+          spacing_msg = str("Groups ", group1_id, "-", group2_id, ": spacing=", available_spacing, ", label_width=", label_width)
+      )
+      echo(spacing_msg)
+      available_spacing < label_width ? undef :  // Label doesn't fit
+      let(
+          // Calculate label position within the spacing (axis-aware)
+          label_primary_pos = (spacing_start + spacing_end) / 2,  // Center of spacing
+          
+          // For normal samples: label X is in the spacing, Y is row center
+          // For rotated samples: label Y is in the spacing, X is column center  
+          label_x = group1_is_rotated ? group1_center_x : label_primary_pos,
+          label_y = group1_is_rotated ? label_primary_pos : group1_center_y,
+          
+          // Use the same rotation as the samples
+          label_is_rotated = group1_is_rotated
+      )
+      [label_x, label_y, label_is_rotated];
+  
+  // Create magnet holes for a label at the specified position
+  module create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, magnet_diameter, magnet_thickness, magnet_count, box_height, cutout_start_z) {
+      
+      // Calculate magnet positions within the label
+      magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+      
+      for (i = [0:len(magnet_positions)-1]) {
+          magnet_pos = magnet_positions[i];
+          magnet_x_offset = magnet_pos[0];
+          magnet_y_offset = magnet_pos[1];
+          
+          translate([label_x + magnet_x_offset, label_y + magnet_y_offset, box_height - magnet_thickness]) {
+              cylinder(d=magnet_diameter, h=magnet_thickness + 1);
+          }
+      }
+  }
+  
+  // Calculate positions for magnets within a label
+  function calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated) =
+      magnet_count == 1 ? 
+          [[0, 0]] :  // Single magnet at center
+      magnet_count == 2 ?
+          // Two magnets distributed along the longer dimension of the label
+          // When samples are rotated, label spans along depth (Y), otherwise along width (X)
+          let(
+              // Choose the dimension to distribute magnets along based on sample orientation
+              primary_dimension = is_rotated ? label_height : label_width,
+              spacing = primary_dimension * 0.6,  // 60% of primary dimension between magnets
+              offset = spacing / 2
+          )
+          is_rotated ? 
+              [[0, -offset], [0, offset]] :  // Distribute along Y when rotated
+              [[-offset, 0], [offset, 0]] :   // Distribute along X when normal
+      // For more magnets, distribute them evenly along the primary dimension
+      let(
+          primary_dimension = is_rotated ? label_height : label_width,
+          spacing = primary_dimension * 0.8 / (magnet_count - 1),  // 80% of primary dimension span
+          start_offset = -primary_dimension * 0.4
+      )
+      is_rotated ?
+          [for (i = [0:magnet_count-1]) [0, start_offset + i * spacing]] :  // Along Y when rotated
+          [for (i = [0:magnet_count-1]) [start_offset + i * spacing, 0]];   // Along X when normal
   // ===== End: grouped_v2.scad =====
+
+// Original: use <src/label_system.scad>
+// Inlining 'use' file (modules/functions only):
+  // ===== Begin: label_system.scad =====
+  // Original: use <algorithms/grouped_v2.scad>
+  // Inlining 'use' file (modules/functions only):
+// Circular dependency detected: /Users/emil/projects/openscad/gridfinity-ffs-holder/src/algorithms/grouped_v2.scad
+  // Label System for Gridfinity Sample Holder
+  // Generates physical 3D label objects with magnets for removable labeling
+  
+  
+  // Generate physical 3D label objects for printing
+  module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+      
+      interior_width = (box_width * l_grid) - (2 * wall_thickness);
+      interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
+  
+      echo("=== Generating Physical Label Objects ===");
+      
+      // Generate the same layout as the main holder to get label positions
+      positions = generate_single_pass_layout(interior_width, interior_depth, sample_width, sample_thickness, 
+                                            min_spacing, group_count, samples_per_group, group_spacing, row_spacing);
+      
+      if (len(positions) > 0) {
+          // Calculate label positions using the same logic as the main holder
+          label_positions = calculate_label_positions(positions, group_spacing, label_position, 
+                                                     label_width, label_height, sample_width, sample_thickness);
+          
+          if (len(label_positions) > 0) {
+              echo(str("Generating ", len(label_positions), " physical labels"));
+              
+              // Parse custom text if provided
+              custom_texts = label_text_mode == "custom" ? parse_custom_text(label_custom_text) : [];
+              
+              for (i = [0:len(label_positions)-1]) {
+                  label_pos = label_positions[i];
+                  label_x = label_pos[0];
+                  label_y = label_pos[1];
+                  is_rotated = label_pos[2];
+                  
+                  // Determine label text
+                  label_text = label_text_mode == "auto" ? 
+                      str("G", i + 1) :  // G1, G2, G3, etc.
+                      (i < len(custom_texts) ? custom_texts[i] : str("G", i + 1));  // Fallback to auto if not enough custom texts
+                  
+                  // Create the physical label at the calculated position
+                  translate([label_x, label_y, 0]) 
+                      create_physical_label(label_text, is_rotated, label_width, label_height, label_thickness,
+                                          magnet_diameter, magnet_thickness, magnet_count,
+                                          text_style, text_depth, font_size, font_family);
+              }
+          } else {
+              echo("No label positions found - check grouping settings");
+          }
+      } else {
+          echo("No sample positions found - cannot generate labels");
+      }
+  }
+  
+  // Create a single physical label with text and magnet holes
+  module create_physical_label(text, is_rotated, label_width, label_height, label_thickness, magnet_diameter, magnet_thickness, magnet_count, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+      
+      // Adjust label dimensions based on rotation
+      actual_width = is_rotated ? label_height : label_width;
+      actual_height = is_rotated ? label_width : label_height;
+      
+      // Calculate font size if auto (0)
+      calculated_font_size = font_size > 0 ? font_size : min(actual_width * 0.15, actual_height * 0.3);
+      
+      // Fix text rotation - invert the rotation for better readability
+      // When samples are rotated (wide along X), text should NOT be rotated
+      // When samples are normal (narrow along X), text should be rotated 90 degrees
+      text_rotation = is_rotated ? 0 : 90;
+      
+      echo(str("Label: text='", text, "', is_rotated=", is_rotated, ", text_rotation=", text_rotation, ", style=", text_style));
+      
+      color("orange", 0.8) 
+      union() {
+          // Main label body
+          difference() {
+              translate([-actual_width/2, -actual_height/2, 0])
+                  cube([actual_width, actual_height, label_thickness]);
+              
+              // Subtract magnet holes
+              magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+              
+              for (i = [0:len(magnet_positions)-1]) {
+                  magnet_pos = magnet_positions[i];
+                  magnet_x_offset = magnet_pos[0];
+                  magnet_y_offset = magnet_pos[1];
+                  
+                  translate([magnet_x_offset, magnet_y_offset, -0.1]) {
+                      cylinder(d=magnet_diameter, h=magnet_thickness + 0.2);
+                  }
+              }
+              
+              // Debossed text (carved into surface)
+              if (text_style == "debossed") {
+                  translate([0, 0, label_thickness - text_depth + 0.01]) {
+                      linear_extrude(height = text_depth + 0.1) {
+                          rotate([0, 0, text_rotation]) {
+                              text(text, size = calculated_font_size, 
+                                   halign = "center", valign = "center", 
+                                   font = font_family);
+                          }
+                      }
+                  }
+              }
+              
+              // Inset text (cutout for different colored insert)
+              if (text_style == "inset") {
+                  translate([0, 0, label_thickness - text_depth + 0.01]) {
+                      linear_extrude(height = text_depth + 0.1) {
+                          rotate([0, 0, text_rotation]) {
+                              text(text, size = calculated_font_size, 
+                                   halign = "center", valign = "center", 
+                                   font = font_family);
+                          }
+                      }
+                  }
+              }
+          }
+          
+          // Embossed text (raised above surface)
+          if (text_style == "embossed") {
+              translate([0, 0, label_thickness]) {
+                  linear_extrude(height = text_depth) {
+                      rotate([0, 0, text_rotation]) {
+                          text(text, size = calculated_font_size, 
+                               halign = "center", valign = "center", 
+                               font = font_family);
+                      }
+                  }
+              }
+          }
+          
+          // Inset text as a separate colored object (for multi-material printing)
+          if (text_style == "inset") {
+              color("white") 
+              translate([0, 0, label_thickness - text_depth]) {
+                  linear_extrude(height = text_depth) {
+                      rotate([0, 0, text_rotation]) {
+                          text(text, size = calculated_font_size, 
+                               halign = "center", valign = "center", 
+                               font = font_family);
+                      }
+                  }
+              }
+          }
+      }
+  }
+  
+  // Parse comma-separated custom text into array
+  function parse_custom_text(text_string) =
+      len(text_string) == 0 ? [] :
+      let(
+          // Simple comma parsing - split on commas and trim spaces
+          parts = split_string_on_comma(text_string)
+      )
+      [for (part = parts) trim_string(part)];
+  
+  // Simple string splitting on comma (basic implementation)
+  function split_string_on_comma(str) =
+      len(str) == 0 ? [] :
+      let(
+          comma_pos = find_first_comma(str, 0)
+      )
+      comma_pos == -1 ? [str] :  // No comma found, return whole string
+      concat([substr(str, 0, comma_pos)], split_string_on_comma(substr(str, comma_pos + 1)));
+  
+  // Find first comma in string starting from position
+  function find_first_comma(str, start_pos) =
+      start_pos >= len(str) ? -1 :
+      str[start_pos] == "," ? start_pos :
+      find_first_comma(str, start_pos + 1);
+  
+  // Extract substring (basic implementation)
+  function substr(str, start, length = -1) =
+      let(
+          actual_length = length == -1 ? len(str) - start : min(length, len(str) - start),
+          end_pos = start + actual_length
+      )
+      start >= len(str) || actual_length <= 0 ? "" :
+      string_slice(str, start, end_pos - 1);
+  
+  // Extract character range from string (OpenSCAD compatible)
+  function string_slice(str, start_idx, end_idx) = 
+      start_idx > end_idx ? "" :
+      let(
+          chars = [for (i = [start_idx:end_idx]) str[i]]
+      )
+      concat_chars(chars);
+  
+  // Concatenate character array into string
+  function concat_chars(chars) =
+      len(chars) == 0 ? "" :
+      len(chars) == 1 ? chars[0] :
+      str(chars[0], concat_chars([for (i = [1:len(chars)-1]) chars[i]]));
+  
+  // Trim whitespace from string
+  function trim_string(str) =
+      len(str) == 0 ? "" :
+      let(
+          first_non_space = find_first_non_space(str, 0),
+          last_non_space = find_last_non_space(str, len(str) - 1)
+      )
+      first_non_space == -1 ? "" :  // All spaces
+      substr(str, first_non_space, last_non_space - first_non_space + 1);
+  
+  // Find first non-space character
+  function find_first_non_space(str, pos) =
+      pos >= len(str) ? -1 :
+      str[pos] != " " && str[pos] != "\t" ? pos :
+      find_first_non_space(str, pos + 1);
+  
+  // Find last non-space character
+  function find_last_non_space(str, pos) =
+      pos < 0 ? -1 :
+      str[pos] != " " && str[pos] != "\t" ? pos :
+      find_last_non_space(str, pos - 1);
+  // ===== End: label_system.scad =====
 
 /*
  * Gridfinity Sample Box Generator
@@ -1188,7 +1945,39 @@ use <gridfinity-rebuilt-openscad/generic-helpers.scad>
 
 // Include our modular components
 
+module mw_plate_2() {
+    // Label objects for separate printing
+    if (sh_enable_labels && (sh_enable_grouping || sh_algorithm_type == 2)) {
+        generate_label_objects(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
+                              sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
+                              sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
+                              sh_group_count, sh_samples_per_group, sh_group_spacing,
+                              sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                              sh_label_width, sh_label_height, sh_label_thickness,
+                              sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
+                              sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
+    }
+}
 
+module mw_assembly_view() {
+    // Combined assembly view for preview
+    mw_plate_1();
+    
+    if (sh_generate_labels && sh_enable_labels && (sh_enable_grouping || sh_algorithm_type == 2)) {
+        translate([0, 0, 30]) // Move labels above the main holder for visibility
+            mw_plate_2();
+    }
+}
+
+// Default view - show assembly unless generate_labels is specifically enabled
+if (sh_generate_labels) {
+    // When generating labels, show only the plates (for 3MF export)
+    mw_plate_1();
+    translate([200, 0, 0]) mw_plate_2(); // Separate plates for printing
+} else {
+    // Normal preview mode - show assembly
+    mw_assembly_view();
+}
 
 // Display information
 echo("=== Gridfinity Sample Box Generator ===");
