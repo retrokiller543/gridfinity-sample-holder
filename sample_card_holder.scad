@@ -83,7 +83,7 @@ sh_label_position = "center"; // [start, center, end]
 // Label dimensions in millimeters
 sh_label_width = 10.0; // [3:0.5:100]
 sh_label_height = 8.0; // [3:0.5:300]
-sh_label_thickness = 1.5; // [0.5:0.1:5]
+sh_label_thickness = 3.5; // [1.5:0.1:6]
 
 /* [Magnet Settings] */
 // Magnet system for removable labels
@@ -158,7 +158,7 @@ module mw_assembly_view() {
     }
 }
 
-// Default view - show assembly unless generate_labels is specifically enabled
+/* // Default view - show assembly unless generate_labels is specifically enabled
 if (sh_generate_labels) {
     // When generating labels, show only the plates (for 3MF export)
     mw_plate_1();
@@ -166,7 +166,7 @@ if (sh_generate_labels) {
 } else {
     // Normal preview mode - show assembly
     mw_assembly_view();
-}
+} */
 
 // Display information
 echo("=== Gridfinity Sample Box Generator ===");

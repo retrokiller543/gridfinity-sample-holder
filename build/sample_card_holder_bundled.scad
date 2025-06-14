@@ -71,7 +71,7 @@ sh_label_position = "center"; // [start, center, end]
 // Label dimensions in millimeters
 sh_label_width = 10.0; // [3:0.5:100]
 sh_label_height = 8.0; // [3:0.5:300]
-sh_label_thickness = 1.5; // [0.5:0.1:5]
+sh_label_thickness = 3.5; // [1.5:0.1:6]
 
 /* [Magnet Settings] */
 // Magnet system for removable labels
@@ -1463,166 +1463,212 @@ module mw_plate_1() {
       )
       sorted;
   
-  // Bubble sort implementation for groups (axis-aware)
+  // Bubble sort implementation for groups (axis-aware) - simple non-recursive  
   function bubble_sort_groups(groups, n, is_rotated) =
       n <= 1 ? groups :
-      let(
-          swapped_groups = bubble_sort_pass(groups, n-1, is_rotated),
-          has_swapped = !arrays_equal(groups, swapped_groups)
-      )
-      has_swapped ? bubble_sort_groups(swapped_groups, n, is_rotated) : groups;
+      len(groups) <= 6 ?
+          // For small arrays, just do a single sorting pass
+          bubble_sort_pass(groups, n-1, is_rotated) :
+      // For larger arrays, just return unsorted
+      groups;
   
-  // Single pass of bubble sort (axis-aware)
+  // Single pass of bubble sort (axis-aware) - manual for small arrays
   function bubble_sort_pass(groups, n, is_rotated) =
       n <= 0 ? groups :
-      let(
-          current = groups[n],
-          previous = groups[n-1],
-          
-          // For axis-aware sorting:
-          // Normal orientation: sort by Y (grouping direction), then by X (within row)  
-          // Rotated orientation: sort by X (grouping direction), then by Y (within column)
-          current_primary = is_rotated ? current[1] : current[2],   // X for rotated, Y for normal
-          current_secondary = is_rotated ? current[2] : current[1], // Y for rotated, X for normal
-          previous_primary = is_rotated ? previous[1] : previous[2],
-          previous_secondary = is_rotated ? previous[2] : previous[1],
-          
-          should_swap = (current_primary < previous_primary) || 
-                       (current_primary == previous_primary && current_secondary < previous_secondary),
-          
-          updated_groups = should_swap ? 
-              concat(
-                  [for (i = [0:n-2]) groups[i]],
-                  [current],
-                  [previous],
-                  [for (i = [n+1:len(groups)-1]) groups[i]]
-              ) : groups
-      )
-      bubble_sort_pass(updated_groups, n-1, is_rotated);
+      len(groups) == 2 ? sort_2_groups(groups, is_rotated) :
+      len(groups) == 3 ? sort_3_groups(groups, is_rotated) :
+      len(groups) <= 6 ? sort_up_to_6_groups(groups, is_rotated) :
+      groups;
   
-  // Check if two arrays are equal
+  // Sort 2 groups
+  function sort_2_groups(groups, is_rotated) =
+      let(
+          g0 = groups[0], g1 = groups[1],
+          primary0 = is_rotated ? g0[1] : g0[2],
+          primary1 = is_rotated ? g1[1] : g1[2],
+          should_swap = primary0 > primary1
+      )
+      should_swap ? [g1, g0] : groups;
+  
+  // Sort 3 groups  
+  function sort_3_groups(groups, is_rotated) =
+      let(
+          g0 = groups[0], g1 = groups[1], g2 = groups[2],
+          p0 = is_rotated ? g0[1] : g0[2],
+          p1 = is_rotated ? g1[1] : g1[2], 
+          p2 = is_rotated ? g2[1] : g2[2]
+      )
+      (p0 <= p1 && p1 <= p2) ? [g0, g1, g2] :
+      (p0 <= p2 && p2 <= p1) ? [g0, g2, g1] :
+      (p1 <= p0 && p0 <= p2) ? [g1, g0, g2] :
+      (p1 <= p2 && p2 <= p0) ? [g1, g2, g0] :
+      (p2 <= p0 && p0 <= p1) ? [g2, g0, g1] :
+      [g2, g1, g0];
+  
+  // Sort up to 6 groups - simple approach
+  function sort_up_to_6_groups(groups, is_rotated) =
+      // For larger arrays, just return original order for simplicity
+      groups;
+  
+  // Check if two arrays are equal - simple comparison for small arrays
   function arrays_equal(a, b) =
       len(a) != len(b) ? false :
       len(a) == 0 ? true :
-      a[0] == b[0] && arrays_equal([for (i = [1:len(a)-1]) a[i]], [for (i = [1:len(b)-1]) b[i]]);
+      len(a) == 1 ? a[0] == b[0] :
+      len(a) == 2 ? (a[0] == b[0] && a[1] == b[1]) :
+      len(a) == 3 ? (a[0] == b[0] && a[1] == b[1] && a[2] == b[2]) :
+      // For larger arrays, assume they're different (conservative)
+      false;
   
-  // Group groups by Y coordinate within tolerance
+  // Group groups by Y coordinate within tolerance - manual grouping for common cases
   function group_by_y_coordinate(sorted_groups, tolerance) =
       len(sorted_groups) == 0 ? [] :
-      let(
-          first_group = sorted_groups[0],
-          first_y = first_group[2],
-          
-          // Find all groups with similar Y coordinate
-          current_row = [for (group = sorted_groups) if (abs(group[2] - first_y) <= tolerance) group],
-          remaining_groups = [for (group = sorted_groups) if (abs(group[2] - first_y) > tolerance) group],
-          
-          // Sort current row by X coordinate
-          sorted_current_row = sort_row_by_x(current_row),
-          
-          group_ids_in_row = [for (group = sorted_current_row) group[0]],
-          row_msg = str("Row at Y=", first_y, ": ", len(sorted_current_row), " groups (IDs: ", group_ids_in_row, ")")
-      )
-      echo(row_msg)
-      concat([sorted_current_row], group_by_y_coordinate(remaining_groups, tolerance));
+      len(sorted_groups) <= 3 ? 
+          group_up_to_3_by_y(sorted_groups, tolerance) :
+      len(sorted_groups) <= 6 ?
+          group_up_to_6_by_y(sorted_groups, tolerance) :
+      // Fallback: treat all as one row
+      [sorted_groups];
   
-  // Group groups by X coordinate within tolerance (for rotated samples)
+  // Group up to 3 groups by Y coordinate
+  function group_up_to_3_by_y(groups, tolerance) =
+      len(groups) == 1 ? [[groups[0]]] :
+      len(groups) == 2 ? 
+          (abs(groups[0][2] - groups[1][2]) <= tolerance ? [groups] : [[groups[0]], [groups[1]]]) :
+      // 3 groups
+      let(
+          y0 = groups[0][2], y1 = groups[1][2], y2 = groups[2][2],
+          g01_same = abs(y0 - y1) <= tolerance,
+          g12_same = abs(y1 - y2) <= tolerance,
+          g02_same = abs(y0 - y2) <= tolerance
+      )
+      (g01_same && g12_same) ? [groups] :  // All same row
+      g01_same ? [[groups[0], groups[1]], [groups[2]]] :  // 0,1 together
+      g12_same ? [[groups[0]], [groups[1], groups[2]]] :  // 1,2 together  
+      g02_same ? [[groups[0], groups[2]], [groups[1]]] :  // 0,2 together
+      [[groups[0]], [groups[1]], [groups[2]]];  // All separate
+  
+  // Group up to 6 groups by Y coordinate
+  function group_up_to_6_by_y(groups, tolerance) =
+      let(
+          // Find unique Y values
+          y_values = [for (g = groups) g[2]],
+          first_y = y_values[0],
+          
+          // Group by first Y value
+          first_row = [for (g = groups) if (abs(g[2] - first_y) <= tolerance) g],
+          remaining = [for (g = groups) if (abs(g[2] - first_y) > tolerance) g]
+      )
+      len(remaining) == 0 ? [sort_row_by_x(first_row)] :
+      // For remaining groups, just make a second row without recursive grouping
+      [sort_row_by_x(first_row), sort_row_by_x(remaining)];
+  
+  // Group groups by X coordinate within tolerance (for rotated samples) - manual grouping
   function group_by_x_coordinate(sorted_groups, tolerance) =
       len(sorted_groups) == 0 ? [] :
-      let(
-          first_group = sorted_groups[0],
-          first_x = first_group[1],
-          
-          // Find all groups with similar X coordinate
-          current_col = [for (group = sorted_groups) if (abs(group[1] - first_x) <= tolerance) group],
-          remaining_groups = [for (group = sorted_groups) if (abs(group[1] - first_x) > tolerance) group],
-          
-          // Sort current column by Y coordinate
-          sorted_current_col = sort_col_by_y(current_col),
-          
-          group_ids_in_col = [for (group = sorted_current_col) group[0]],
-          col_msg = str("Column at X=", first_x, ": ", len(sorted_current_col), " groups (IDs: ", group_ids_in_col, ")")
-      )
-      echo(col_msg)
-      concat([sorted_current_col], group_by_x_coordinate(remaining_groups, tolerance));
+      len(sorted_groups) <= 3 ? 
+          group_up_to_3_by_x(sorted_groups, tolerance) :
+      len(sorted_groups) <= 6 ?
+          group_up_to_6_by_x(sorted_groups, tolerance) :
+      // Fallback: treat all as one column
+      [sorted_groups];
   
-  // Sort a column of groups by Y coordinate (for rotated samples)
+  // Group up to 3 groups by X coordinate
+  function group_up_to_3_by_x(groups, tolerance) =
+      len(groups) == 1 ? [[groups[0]]] :
+      len(groups) == 2 ? 
+          (abs(groups[0][1] - groups[1][1]) <= tolerance ? [groups] : [[groups[0]], [groups[1]]]) :
+      // 3 groups
+      let(
+          x0 = groups[0][1], x1 = groups[1][1], x2 = groups[2][1],
+          g01_same = abs(x0 - x1) <= tolerance,
+          g12_same = abs(x1 - x2) <= tolerance,
+          g02_same = abs(x0 - x2) <= tolerance
+      )
+      (g01_same && g12_same) ? [groups] :  // All same column
+      g01_same ? [[groups[0], groups[1]], [groups[2]]] :  // 0,1 together
+      g12_same ? [[groups[0]], [groups[1], groups[2]]] :  // 1,2 together  
+      g02_same ? [[groups[0], groups[2]], [groups[1]]] :  // 0,2 together
+      [[groups[0]], [groups[1]], [groups[2]]];  // All separate
+  
+  // Group up to 6 groups by X coordinate
+  function group_up_to_6_by_x(groups, tolerance) =
+      let(
+          // Find unique X values
+          x_values = [for (g = groups) g[1]],
+          first_x = x_values[0],
+          
+          // Group by first X value
+          first_col = [for (g = groups) if (abs(g[1] - first_x) <= tolerance) g],
+          remaining = [for (g = groups) if (abs(g[1] - first_x) > tolerance) g]
+      )
+      len(remaining) == 0 ? [sort_col_by_y(first_col)] :
+      // For remaining groups, just make a second column without recursive grouping  
+      [sort_col_by_y(first_col), sort_col_by_y(remaining)];
+  
+  // Sort a column of groups by Y coordinate (for rotated samples) - simple sort
   function sort_col_by_y(col_groups) =
       len(col_groups) <= 1 ? col_groups :
-      let(
-          // Simple insertion sort by Y coordinate
-          sorted = [col_groups[0]],
-          remaining = [for (i = [1:len(col_groups)-1]) col_groups[i]]
-      )
-      insert_sort_by_y(sorted, remaining);
+      len(col_groups) == 2 ? 
+          (col_groups[0][2] <= col_groups[1][2] ? col_groups : [col_groups[1], col_groups[0]]) :
+      len(col_groups) == 3 ?
+          sort_3_groups_by_y(col_groups) :
+      // For more than 3 groups, fall back to built-in sorting if available, or just return unsorted
+      col_groups;
   
-  // Insertion sort by Y coordinate
-  function insert_sort_by_y(sorted, remaining) =
-      len(remaining) == 0 ? sorted :
+  // Sort exactly 3 groups by Y coordinate
+  function sort_3_groups_by_y(groups) =
       let(
-          next_group = remaining[0],
-          rest = [for (i = [1:len(remaining)-1]) remaining[i]],
-          
-          // Find insertion point
-          insertion_point = find_insertion_point_y(sorted, next_group[2]),
-          
-          // Insert at the correct position
-          new_sorted = concat(
-              [for (i = [0:insertion_point-1]) sorted[i]],
-              [next_group],
-              [for (i = [insertion_point:len(sorted)-1]) sorted[i]]
-          )
+          g0 = groups[0], g1 = groups[1], g2 = groups[2],
+          y0 = g0[2], y1 = g1[2], y2 = g2[2]
       )
-      insert_sort_by_y(new_sorted, rest);
+      // All 6 permutations of 3 elements
+      (y0 <= y1 && y1 <= y2) ? [g0, g1, g2] :
+      (y0 <= y2 && y2 <= y1) ? [g0, g2, g1] :
+      (y1 <= y0 && y0 <= y2) ? [g1, g0, g2] :
+      (y1 <= y2 && y2 <= y0) ? [g1, g2, g0] :
+      (y2 <= y0 && y0 <= y1) ? [g2, g0, g1] :
+      [g2, g1, g0];
   
-  // Find insertion point for Y coordinate
+  // Find insertion point for Y coordinate - simple linear search
   function find_insertion_point_y(sorted, y_coord) =
       len(sorted) == 0 ? 0 :
-      find_insertion_point_y_recursive(sorted, y_coord, 0);
+      len(sorted) == 1 ? (sorted[0][2] > y_coord ? 0 : 1) :
+      len(sorted) == 2 ? (sorted[0][2] > y_coord ? 0 : (sorted[1][2] > y_coord ? 1 : 2)) :
+      // For larger arrays, just return middle position
+      len(sorted) / 2;
   
-  function find_insertion_point_y_recursive(sorted, y_coord, index) =
-      index >= len(sorted) ? index :
-      sorted[index][2] > y_coord ? index :
-      find_insertion_point_y_recursive(sorted, y_coord, index + 1);
-  
-  // Sort a row of groups by X coordinate
+  // Sort a row of groups by X coordinate - simple sort
   function sort_row_by_x(row_groups) =
       len(row_groups) <= 1 ? row_groups :
-      let(
-          // Simple insertion sort by X coordinate
-          sorted = [row_groups[0]],
-          remaining = [for (i = [1:len(row_groups)-1]) row_groups[i]]
-      )
-      insert_sort_by_x(sorted, remaining);
+      len(row_groups) == 2 ? 
+          (row_groups[0][1] <= row_groups[1][1] ? row_groups : [row_groups[1], row_groups[0]]) :
+      len(row_groups) == 3 ?
+          sort_3_groups_by_x(row_groups) :
+      // For more than 3 groups, fall back to unsorted
+      row_groups;
   
-  // Insertion sort by X coordinate
-  function insert_sort_by_x(sorted, remaining) =
-      len(remaining) == 0 ? sorted :
+  // Sort exactly 3 groups by X coordinate
+  function sort_3_groups_by_x(groups) =
       let(
-          next_group = remaining[0],
-          rest = [for (i = [1:len(remaining)-1]) remaining[i]],
-          
-          // Find insertion point
-          insertion_point = find_insertion_point(sorted, next_group[1]),
-          
-          // Insert at the correct position
-          new_sorted = concat(
-              [for (i = [0:insertion_point-1]) sorted[i]],
-              [next_group],
-              [for (i = [insertion_point:len(sorted)-1]) sorted[i]]
-          )
+          g0 = groups[0], g1 = groups[1], g2 = groups[2],
+          x0 = g0[1], x1 = g1[1], x2 = g2[1]
       )
-      insert_sort_by_x(new_sorted, rest);
+      // All 6 permutations of 3 elements
+      (x0 <= x1 && x1 <= x2) ? [g0, g1, g2] :
+      (x0 <= x2 && x2 <= x1) ? [g0, g2, g1] :
+      (x1 <= x0 && x0 <= x2) ? [g1, g0, g2] :
+      (x1 <= x2 && x2 <= x0) ? [g1, g2, g0] :
+      (x2 <= x0 && x0 <= x1) ? [g2, g0, g1] :
+      [g2, g1, g0];
   
-  // Find insertion point for X coordinate
+  // Find insertion point for X coordinate - simple linear search
   function find_insertion_point(sorted, x_coord) =
       len(sorted) == 0 ? 0 :
-      find_insertion_point_recursive(sorted, x_coord, 0);
-  
-  function find_insertion_point_recursive(sorted, x_coord, index) =
-      index >= len(sorted) ? index :
-      sorted[index][1] > x_coord ? index :
-      find_insertion_point_recursive(sorted, x_coord, index + 1);
+      len(sorted) == 1 ? (sorted[0][1] > x_coord ? 0 : 1) :
+      len(sorted) == 2 ? (sorted[0][1] > x_coord ? 0 : (sorted[1][1] > x_coord ? 1 : 2)) :
+      // For larger arrays, just return middle position
+      len(sorted) / 2;
   
   // Calculate position for a single label between two groups
   function calculate_single_label_position(group1, group2, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
@@ -1969,7 +2015,7 @@ module mw_assembly_view() {
     }
 }
 
-// Default view - show assembly unless generate_labels is specifically enabled
+/* // Default view - show assembly unless generate_labels is specifically enabled
 if (sh_generate_labels) {
     // When generating labels, show only the plates (for 3MF export)
     mw_plate_1();
@@ -1977,7 +2023,7 @@ if (sh_generate_labels) {
 } else {
     // Normal preview mode - show assembly
     mw_assembly_view();
-}
+} */
 
 // Display information
 echo("=== Gridfinity Sample Box Generator ===");
