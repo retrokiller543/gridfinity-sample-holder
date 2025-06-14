@@ -1,6 +1,6 @@
 use <../vallidation.scad>
 
-module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0) {
+module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, enable_labels=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2) {
   
     interior_width = (box_width * l_grid) - (2 * wall_thickness);
     interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -10,6 +10,7 @@ module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side
     echo(str("Sample size: ", sample_thickness, " x ", sample_width, " mm"));
     echo(str("Enable grouping: ", enable_grouping));
     echo(str("Group count: ", group_count, ", Samples per group: ", samples_per_group));
+    echo(str("Enable labels: ", enable_labels, ", Mode: ", label_text_mode, ", Position: ", label_position));
     echo(str("Sample fits normal (", sample_thickness, "x", sample_width, "): width=", sample_thickness <= interior_width, " depth=", sample_width <= interior_depth));
     echo(str("Sample fits rotated (", sample_width, "x", sample_thickness, "): width=", sample_width <= interior_width, " depth=", sample_thickness <= interior_depth));
 
@@ -31,6 +32,29 @@ module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side
         
         translate([pos_x, pos_y, box_height - (box_height - cutout_start_z)]) 
             sample_cutout_shape(is_rotated, sample_width, sample_thickness, box_height, cutout_start_z);
+    }
+    
+    // Generate label magnet holes if labels are enabled - this is the final step
+    if (enable_labels && len(positions) > 0) {
+        // Now positions contains ALL final sample positions across all rows
+        label_positions = calculate_label_positions(positions, group_spacing, label_position, 
+                                                   label_width, label_height, sample_width, sample_thickness);
+        
+        if (len(label_positions) > 0) {
+            echo(str("Generated ", len(label_positions), " label positions"));
+            
+            for (i = [0:len(label_positions)-1]) {
+                label_pos = label_positions[i];
+                label_x = label_pos[0];
+                label_y = label_pos[1];
+                is_rotated = label_pos[2];
+                
+                // Create magnet holes for this label
+                create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, 
+                                        magnet_diameter, magnet_thickness, magnet_count, 
+                                        box_height, cutout_start_z);
+            }
+        }
     }
 }
 
@@ -212,9 +236,12 @@ function generate_all_col_positions(first_col_y_positions, num_cols, sample_widt
             for (y_data = first_col_y_positions)
                 let(
                     y_pos = y_data[0],
-                    group_id = y_data[1]
+                    original_group_id = y_data[1],
+                    // Make group_id unique across columns by adding column offset
+                    max_groups_per_col = max([for (data = first_col_y_positions) data[1]]) + 1,
+                    unique_group_id = original_group_id + (col_idx * max_groups_per_col)
                 )
-                [col_x, y_pos, use_rotated, group_id]
+                [col_x, y_pos, use_rotated, unique_group_id]
     ];
 
 function generate_first_row_positions(interior_width, sample_width, min_spacing, group_count, samples_per_group, group_spacing) =
@@ -606,9 +633,12 @@ function generate_all_row_positions(first_row_x_positions, num_rows, sample_dept
             for (x_data = first_row_x_positions)
                 let(
                     x_pos = x_data[0],
-                    group_id = x_data[1]
+                    original_group_id = x_data[1],
+                    // Make group_id unique across rows by adding row offset
+                    max_groups_per_row = max([for (data = first_row_x_positions) data[1]]) + 1,
+                    unique_group_id = original_group_id + (row_idx * max_groups_per_row)
                 )
-                [x_pos, row_y, use_rotated, group_id]
+                [x_pos, row_y, use_rotated, unique_group_id]
     ];
 
 module sample_cutout_shape(is_rotated, sample_width, sample_thickness, box_height, cutout_start_z) {
@@ -620,3 +650,282 @@ module sample_cutout_shape(is_rotated, sample_width, sample_thickness, box_heigh
     translate([-width/2, -depth/2, 0])
         cube([width, depth, cutout_height + 1]);
 }
+
+// Calculate label positions based on group positions and spacing
+function calculate_label_positions(positions, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+    let(
+        // Extract groups from positions - positions format: [x, y, is_rotated, group_id]
+        groups_info = extract_group_info(positions),
+        
+        label_calc_msg = str("Label calculation: ", len(groups_info), " groups found, group_spacing=", group_spacing)
+    )
+    echo(label_calc_msg)
+    len(groups_info) < 2 ? [] :  // Need at least 2 groups to have spacing between them
+    let(
+        // Group by rows (groups with similar Y coordinates are in the same row)
+        rows_with_groups = group_by_rows(groups_info),
+        
+        // Calculate label positions for each row
+        label_positions = [
+            for (row = rows_with_groups)
+                if (len(row) >= 2)  // Need at least 2 groups in a row for labels
+                    for (i = [0:len(row)-2])  // Between each pair of adjacent groups in this row
+                        let(
+                            group1 = row[i],
+                            group2 = row[i+1],
+                            
+                            // Calculate label position between these groups in this row
+                            label_pos = calculate_single_label_position(group1, group2, group_spacing, 
+                                                                       label_position, label_width, label_height,
+                                                                       sample_width, sample_thickness)
+                        )
+                        if (label_pos != undef) label_pos  // Only include if label fits
+        ]
+    )
+    label_positions;
+
+// Extract group information from positions array
+function extract_group_info(positions) =
+    let(
+        // Group positions by group_id (positions format: [x, y, is_rotated, group_id])
+        grouped_positions = group_positions_by_id(positions),
+        
+        // Calculate bounds for each group
+        groups_info = [
+            for (group_id = [0:len(grouped_positions)-1])
+                if (len(grouped_positions[group_id]) > 0)
+                    let(
+                        group_positions = grouped_positions[group_id],
+                        first_pos = group_positions[0],
+                        is_rotated = first_pos[2],
+                        
+                        // Calculate group bounds
+                        x_coords = [for (pos = group_positions) pos[0]],
+                        y_coords = [for (pos = group_positions) pos[1]],
+                        
+                        min_x = min(x_coords),
+                        max_x = max(x_coords),
+                        min_y = min(y_coords),
+                        max_y = max(y_coords),
+                        
+                        center_x = (min_x + max_x) / 2,
+                        center_y = (min_y + max_y) / 2
+                    )
+                    [group_id, center_x, center_y, min_x, max_x, min_y, max_y, is_rotated]
+        ]
+    )
+    groups_info;
+
+// Group positions by their group_id
+function group_positions_by_id(positions) =
+    let(
+        max_group_id = max([for (pos = positions) len(pos) > 3 ? pos[3] : 0]),
+        grouped = [
+            for (group_id = [0:max_group_id])
+                [for (pos = positions) if (len(pos) > 3 && pos[3] == group_id) pos]
+        ]
+    )
+    grouped;
+
+// Group groups by rows (groups with similar Y coordinates)
+function group_by_rows(groups_info) =
+    let(
+        // Sort groups by Y coordinate first, then by X coordinate
+        sorted_groups = sort_groups_by_position(groups_info),
+        
+        // Group by similar Y coordinates (within tolerance)
+        row_tolerance = 5.0,  // Groups within 5mm Y distance are considered same row
+        rows = group_by_y_coordinate(sorted_groups, row_tolerance),
+        
+        row_debug_msg = str("Grouped into ", len(rows), " rows")
+    )
+    echo(row_debug_msg)
+    rows;
+
+// Sort groups by Y coordinate, then by X coordinate
+function sort_groups_by_position(groups_info) =
+    // Simple bubble sort for groups - [group_id, center_x, center_y, min_x, max_x, min_y, max_y, is_rotated]
+    len(groups_info) <= 1 ? groups_info :
+    let(
+        sorted = bubble_sort_groups(groups_info, len(groups_info))
+    )
+    sorted;
+
+// Bubble sort implementation for groups
+function bubble_sort_groups(groups, n) =
+    n <= 1 ? groups :
+    let(
+        swapped_groups = bubble_sort_pass(groups, n-1),
+        has_swapped = !arrays_equal(groups, swapped_groups)
+    )
+    has_swapped ? bubble_sort_groups(swapped_groups, n) : groups;
+
+// Single pass of bubble sort
+function bubble_sort_pass(groups, n) =
+    n <= 0 ? groups :
+    let(
+        current = groups[n],
+        previous = groups[n-1],
+        
+        // Compare by Y first, then by X
+        current_y = current[2],
+        current_x = current[1],
+        previous_y = previous[2],
+        previous_x = previous[1],
+        
+        should_swap = (current_y < previous_y) || (current_y == previous_y && current_x < previous_x),
+        
+        updated_groups = should_swap ? 
+            concat(
+                [for (i = [0:n-2]) groups[i]],
+                [current],
+                [previous],
+                [for (i = [n+1:len(groups)-1]) groups[i]]
+            ) : groups
+    )
+    bubble_sort_pass(updated_groups, n-1);
+
+// Check if two arrays are equal
+function arrays_equal(a, b) =
+    len(a) != len(b) ? false :
+    len(a) == 0 ? true :
+    a[0] == b[0] && arrays_equal([for (i = [1:len(a)-1]) a[i]], [for (i = [1:len(b)-1]) b[i]]);
+
+// Group groups by Y coordinate within tolerance
+function group_by_y_coordinate(sorted_groups, tolerance) =
+    len(sorted_groups) == 0 ? [] :
+    let(
+        first_group = sorted_groups[0],
+        first_y = first_group[2],
+        
+        // Find all groups with similar Y coordinate
+        current_row = [for (group = sorted_groups) if (abs(group[2] - first_y) <= tolerance) group],
+        remaining_groups = [for (group = sorted_groups) if (abs(group[2] - first_y) > tolerance) group],
+        
+        // Sort current row by X coordinate
+        sorted_current_row = sort_row_by_x(current_row),
+        
+        row_msg = str("Row at Y=", first_y, ": ", len(sorted_current_row), " groups")
+    )
+    echo(row_msg)
+    concat([sorted_current_row], group_by_y_coordinate(remaining_groups, tolerance));
+
+// Sort a row of groups by X coordinate
+function sort_row_by_x(row_groups) =
+    len(row_groups) <= 1 ? row_groups :
+    let(
+        // Simple insertion sort by X coordinate
+        sorted = [row_groups[0]],
+        remaining = [for (i = [1:len(row_groups)-1]) row_groups[i]]
+    )
+    insert_sort_by_x(sorted, remaining);
+
+// Insertion sort by X coordinate
+function insert_sort_by_x(sorted, remaining) =
+    len(remaining) == 0 ? sorted :
+    let(
+        next_group = remaining[0],
+        rest = [for (i = [1:len(remaining)-1]) remaining[i]],
+        
+        // Find insertion point
+        insertion_point = find_insertion_point(sorted, next_group[1]),
+        
+        // Insert at the correct position
+        new_sorted = concat(
+            [for (i = [0:insertion_point-1]) sorted[i]],
+            [next_group],
+            [for (i = [insertion_point:len(sorted)-1]) sorted[i]]
+        )
+    )
+    insert_sort_by_x(new_sorted, rest);
+
+// Find insertion point for X coordinate
+function find_insertion_point(sorted, x_coord) =
+    len(sorted) == 0 ? 0 :
+    find_insertion_point_recursive(sorted, x_coord, 0);
+
+function find_insertion_point_recursive(sorted, x_coord, index) =
+    index >= len(sorted) ? index :
+    sorted[index][1] > x_coord ? index :
+    find_insertion_point_recursive(sorted, x_coord, index + 1);
+
+// Calculate position for a single label between two groups
+function calculate_single_label_position(group1, group2, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+    let(
+        group1_id = group1[0],
+        group1_center_x = group1[1],
+        group1_center_y = group1[2],
+        group1_max_x = group1[4],
+        group1_is_rotated = group1[7],
+        
+        group2_id = group2[0],
+        group2_center_x = group2[1], 
+        group2_center_y = group2[2],
+        group2_min_x = group2[3],
+        group2_is_rotated = group2[7],
+        
+        // Calculate spacing between groups
+        spacing_start_x = group1_max_x,
+        spacing_end_x = group2_min_x,
+        available_spacing = spacing_end_x - spacing_start_x,
+        
+        spacing_msg = str("Groups ", group1_id, "-", group2_id, ": spacing=", available_spacing, ", label_width=", label_width)
+    )
+    echo(spacing_msg)
+    available_spacing < label_width ? undef :  // Label doesn't fit
+    let(
+        // Calculate label X position within the spacing (always centered in the spacing between groups)
+        label_x = (spacing_start_x + spacing_end_x) / 2,
+        
+        // Calculate label Y position within the row based on label_position setting
+        row_center_y = group1_center_y,  // Groups in same row should have same Y
+        sample_depth_in_orientation = group1_is_rotated ? sample_thickness : sample_width,
+        
+        // Calculate row bounds (front and back edges of the row)
+        row_front_y = row_center_y - sample_depth_in_orientation/2,
+        row_back_y = row_center_y + sample_depth_in_orientation/2,
+        
+        // Position label within the row based on user preference
+        label_y = label_position == "start" ? row_front_y + label_height/2 :
+                 label_position == "end" ? row_back_y - label_height/2 :
+                 row_center_y,  // center
+        
+        // Use the same rotation as the samples
+        label_is_rotated = group1_is_rotated
+    )
+    [label_x, label_y, label_is_rotated];
+
+// Create magnet holes for a label at the specified position
+module create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, magnet_diameter, magnet_thickness, magnet_count, box_height, cutout_start_z) {
+    
+    // Calculate magnet positions within the label
+    magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+    
+    for (i = [0:len(magnet_positions)-1]) {
+        magnet_pos = magnet_positions[i];
+        magnet_x_offset = magnet_pos[0];
+        magnet_y_offset = magnet_pos[1];
+        
+        translate([label_x + magnet_x_offset, label_y + magnet_y_offset, box_height - magnet_thickness]) {
+            cylinder(d=magnet_diameter, h=magnet_thickness + 1);
+        }
+    }
+}
+
+// Calculate positions for magnets within a label
+function calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated) =
+    magnet_count == 1 ? 
+        [[0, 0]] :  // Single magnet at center
+    magnet_count == 2 ?
+        // Two magnets along the width
+        let(
+            spacing = label_width * 0.6,  // 60% of width between magnets
+            offset = spacing / 2
+        )
+        [[-offset, 0], [offset, 0]] :
+    // For more magnets, distribute them evenly along the width
+    let(
+        spacing = label_width * 0.8 / (magnet_count - 1),  // 80% of width span
+        start_offset = -label_width * 0.4
+    )
+    [for (i = [0:magnet_count-1]) [start_offset + i * spacing, 0]];

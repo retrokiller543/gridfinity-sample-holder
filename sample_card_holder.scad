@@ -67,6 +67,26 @@ sh_samples_per_group = 0; // [0:1:100]
 // Spacing between groups in millimeters
 sh_group_spacing = 3.0; // [1:0.1:50]
 
+// === Label System ===
+// Enable magnetic removable labels between groups
+sh_enable_labels = false; // [true, false]
+// Label text mode: auto generates G1, G2, etc., custom uses provided text
+sh_label_text_mode = "auto"; // [auto, custom]
+// Custom label text (comma-separated for multiple groups, e.g., "Sample A,Sample B,Sample C")
+sh_label_custom_text = "Group 1,Group 2,Group 3";
+// Label position within group spacing area
+sh_label_position = "center"; // [start, center, end]
+// Label dimensions in millimeters
+sh_label_width = 20.0; // [5:0.5:50]
+sh_label_height = 8.0; // [3:0.5:20]
+sh_label_thickness = 1.5; // [0.5:0.1:5]
+// Magnet system for removable labels
+sh_magnet_diameter = 6.0; // [3:0.5:15]
+sh_magnet_thickness = 2.0; // [0.5:0.1:5]
+sh_magnet_count = 2; // [1:1:6]
+// Generate separate label objects for printing
+sh_generate_labels = false; // [true, false]
+
 // Main model - create solid gridfinity box without lip, then subtract cutouts
 color("lightgray") 
 difference() {
@@ -80,7 +100,10 @@ difference() {
         grouped_v2(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
                    sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
                    sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
-                   sh_group_count, sh_samples_per_group, sh_group_spacing);
+                   sh_group_count, sh_samples_per_group, sh_group_spacing,
+                   sh_enable_labels, sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                   sh_label_width, sh_label_height, sh_label_thickness,
+                   sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count);
     } else if (sh_algorithm_type == 1) {
         grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
                               sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
@@ -92,8 +115,6 @@ difference() {
                       sh_min_spacing, sh_cutout_start_z);
     }
 }
-
-
 
 // Display information
 echo("=== Gridfinity Sample Box Generator ===");
