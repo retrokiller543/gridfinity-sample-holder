@@ -61,15 +61,17 @@ sh_row_spacing = 0; // [0:0.1:20]
 // Enable group-based layout (instead of row-based)
 sh_enable_grouping = false; // [true, false]
 // Number of groups to create (0 = auto-calculate)
-sh_group_count = 0; // [0:1:20]
+sh_group_count = 0; // [0:1:100]
 // Number of samples per group (0 = auto-calculate)
-sh_samples_per_group = 0; // [0:1:50]
+sh_samples_per_group = 0; // [0:1:100]
 // Spacing between groups in millimeters
-sh_group_spacing = 3.0; // [1:0.1:10]
+sh_group_spacing = 3.0; // [1:0.1:50]
 
 // Main model - create solid gridfinity box without lip, then subtract cutouts
 color("lightgray") 
 difference() {
+    assert(sh_min_spacing >= 0.5, "Minimum spacing must be at least 0.5mm to ensure proper cutout separation and ease of printing.");
+
     gridfinity_box(sh_box_width, sh_box_depth, sh_box_height, l_grid, style_lip, style_hole, cut_to_height=true);
     
     // Subtract sample cutouts from the top

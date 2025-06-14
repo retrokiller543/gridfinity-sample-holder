@@ -131,6 +131,12 @@ function test_orientation_layout(interior_width, interior_depth, sample_w, sampl
         samples_along_depth = floor(interior_depth / (sample_d + min_spacing)),
         group_along_width = samples_along_width >= samples_along_depth,
         
+        grouping_msg = str("    Grouping analysis: samples_along_width=", samples_along_width, 
+                          ", samples_along_depth=", samples_along_depth, 
+                          ", grouping_direction=", group_along_width ? "width" : "depth")
+    )
+    echo(grouping_msg)
+    let(
         // Calculate layout based on grouping direction
         layout_data = group_along_width ?
             generate_width_grouped_layout(interior_width, interior_depth, sample_w, sample_d, 
@@ -215,11 +221,16 @@ function generate_first_row_positions(interior_width, sample_width, min_spacing,
     let(
         max_samples_per_row = floor(interior_width / (sample_width + min_spacing)),
         
-        debug_msg = str("    Max samples per row: ", max_samples_per_row, " (width: ", interior_width, ", sample: ", sample_width, ")")
+        debug_msg = str("    Max samples per row: ", max_samples_per_row, " (width: ", interior_width, ", sample: ", sample_width, ", min_spacing: ", min_spacing, ")")
     )
     echo(debug_msg)
     let(
         // Auto-calculate group settings if not specified
+        grouping_mode_msg = str("    Grouping mode: ", group_count == 0 ? "auto" : "manual", 
+                               " (requested: groups=", group_count, ", samples_per_group=", samples_per_group, ")")
+    )
+    echo(grouping_mode_msg)
+    let(
         auto_data = group_count == 0 ? 
             calculate_auto_grouping(max_samples_per_row, sample_width, min_spacing, group_spacing, interior_width, samples_per_group) :
             [group_count, samples_per_group > 0 ? samples_per_group : max(1, floor(max_samples_per_row / group_count))],
@@ -227,13 +238,13 @@ function generate_first_row_positions(interior_width, sample_width, min_spacing,
         effective_group_count = auto_data[0],
         effective_samples_per_group = auto_data[1],
         
-        debug_msg2 = str("    Groups: ", effective_group_count, ", samples per group: ", effective_samples_per_group)
+        debug_msg2 = str("    Effective groups: ", effective_group_count, ", samples per group: ", effective_samples_per_group)
     )
     echo(debug_msg2)
     let(
-        // Generate positions for each group
+        // Generate positions for each group - pass original samples_per_group to preserve user intent
         group_data = generate_groups_in_row(effective_group_count, effective_samples_per_group, 
-                                          sample_width, min_spacing, group_spacing, interior_width),
+                                          sample_width, min_spacing, group_spacing, interior_width, samples_per_group),
         positions = group_data[0],
         total_width = group_data[1]
     )
@@ -294,11 +305,11 @@ function find_max_fitting_groups_for_size(samples_per_group, sample_width, min_s
         )
         find_max_fitting_groups(max_possible_groups, samples_per_group, sample_width, min_spacing, group_spacing, interior_width);
 
-function generate_groups_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+function generate_groups_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0) =
     let(
         // Try to fit all requested groups first
         positions_data = try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, 
-                                                      min_spacing, group_spacing, interior_width),
+                                                      min_spacing, group_spacing, interior_width, original_samples_per_group),
         positions = positions_data[0],
         actual_group_count = positions_data[1],
         actual_samples_per_group = positions_data[2],
@@ -308,35 +319,81 @@ function generate_groups_in_row(group_count, samples_per_group, sample_width, mi
     )
     [positions, actual_width];
 
-function try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+function try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0) =
     let(
         // First try with requested settings
-        fits_as_requested = check_groups_fit_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width)
+        fits_as_requested = check_groups_fit_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width),
+        
+        total_width_needed = group_count * samples_per_group * sample_width + 
+                           group_count * max(0, samples_per_group - 1) * min_spacing + 
+                           max(0, group_count - 1) * group_spacing,
+        
+        fit_msg = str("      Initial fit check: groups=", group_count, ", samples_per_group=", samples_per_group, 
+                     ", width_needed=", total_width_needed, ", available=", interior_width, ", fits=", fits_as_requested)
     )
+    echo(fit_msg)
     fits_as_requested ? 
         // If it fits, generate positions as requested
+        let(
+            success_msg = str("      ✓ Groups fit as requested - generating positions")
+        )
+        echo(success_msg)
         [generate_group_positions(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width), 
          group_count, samples_per_group] :
         // If it doesn't fit, try reducing samples per group first, then group count
-        adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width);
+        let(
+            adjust_msg = str("      ✗ Groups don't fit - starting adjustment process")
+        )
+        echo(adjust_msg)
+        adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group);
 
-function adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+function adjust_to_fit(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0) =
     let(
-        // First try to keep all groups, reduce samples per group to fit
-        adjusted_samples = find_max_samples_per_group_for_groups(group_count, sample_width, min_spacing, group_spacing, interior_width)
+        // When user specifies samples_per_group > 0, respect it and go directly to partial groups
+        // Only allow reduction of samples_per_group when it was auto-calculated (samples_per_group == 0 originally)
+        respect_user_samples = original_samples_per_group > 0,
+        
+        respect_msg = str("        Original samples_per_group=", original_samples_per_group, ", effective=", samples_per_group, ", respect_user_samples=", respect_user_samples)
     )
-    adjusted_samples > 0 ?
-        // If we can fit all groups with fewer samples per group, do that
-        [generate_group_positions(group_count, adjusted_samples, sample_width, min_spacing, group_spacing, interior_width),
-         group_count, adjusted_samples] :
-        // If groups don't fit, find how many complete groups + partial group we can fit
-        fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width);
+    echo(respect_msg)
+    respect_user_samples ?
+        // User specified samples per group - go directly to partial groups to maintain sample count
+        let(
+            partial_msg = str("        ✗ Respecting user's samples_per_group=", samples_per_group, " - using partial groups")
+        )
+        echo(partial_msg)
+        fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group) :
+        // Auto-calculated samples per group - we can adjust it
+        let(
+            adjusted_samples = find_max_samples_per_group_for_groups(group_count, sample_width, min_spacing, group_spacing, interior_width),
+            
+            adjust_samples_msg = str("        Auto-calculated mode: trying to keep all ", group_count, " groups: max_samples_per_group=", adjusted_samples)
+        )
+        echo(adjust_samples_msg)
+        adjusted_samples > 0 ?
+            // If we can fit all groups with fewer samples per group, do that
+            let(
+                samples_adjust_msg = str("        ✓ Adjusted samples per group from ", samples_per_group, " to ", adjusted_samples, " - keeping all ", group_count, " groups")
+            )
+            echo(samples_adjust_msg)
+            [generate_group_positions(group_count, adjusted_samples, sample_width, min_spacing, group_spacing, interior_width),
+             group_count, adjusted_samples] :
+            // If groups don't fit, find how many complete groups + partial group we can fit
+            let(
+                partial_msg = str("        ✗ Can't fit all ", group_count, " groups - trying partial groups")
+            )
+            echo(partial_msg)
+            fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group);
 
-function fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
+function fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0) =
     let(
         // Find the maximum number of complete groups that fit
         max_complete_groups = find_max_fitting_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width),
         
+        complete_groups_msg = str("          Max complete groups that fit: ", max_complete_groups, " out of ", group_count, " requested")
+    )
+    echo(complete_groups_msg)
+    let(
         // Calculate space used by complete groups
         complete_groups_width = max_complete_groups > 0 ? 
             calculate_actual_width(max_complete_groups, samples_per_group, sample_width, min_spacing, group_spacing) : 0,
@@ -344,22 +401,42 @@ function fit_partial_groups(group_count, samples_per_group, sample_width, min_sp
         // Calculate remaining space for partial group
         remaining_width = interior_width - complete_groups_width - (max_complete_groups > 0 ? group_spacing : 0),
         
+        space_calc_msg = str("          Space calculation: complete_groups_width=", complete_groups_width, 
+                            ", remaining_width=", remaining_width, " (interior=", interior_width, ")")
+    )
+    echo(space_calc_msg)
+    let(
         // Calculate how many samples fit in the remaining space (partial group)
         partial_group_samples = remaining_width > sample_width ? 
             samples_fit_in_dimension(remaining_width, sample_width, min_spacing) : 0,
         
+        partial_calc_msg = str("          Partial group calculation: remaining_width=", remaining_width, 
+                              ", sample_width=", sample_width, ", partial_samples=", partial_group_samples)
+    )
+    echo(partial_calc_msg)
+    let(
         // Total groups (complete + partial if any)
         total_groups = max_complete_groups + (partial_group_samples > 0 ? 1 : 0),
         
-        debug_msg = str("    Partial fit: ", max_complete_groups, " complete groups, ", partial_group_samples, " in partial group")
+        debug_msg = str("          Final partial fit: ", max_complete_groups, " complete groups (", samples_per_group, " each), ", 
+                       partial_group_samples, " in partial group = ", total_groups, " total groups")
     )
     echo(debug_msg)
     total_groups > 0 ?
         // Generate positions for complete groups + partial group
+        let(
+            generation_msg = str("          Generating mixed positions: ", max_complete_groups, " complete + ", 
+                                (partial_group_samples > 0 ? 1 : 0), " partial = ", total_groups, " groups")
+        )
+        echo(generation_msg)
         [generate_mixed_group_positions(max_complete_groups, samples_per_group, partial_group_samples, 
                                        sample_width, min_spacing, group_spacing, interior_width),
          total_groups, samples_per_group] :
         // If nothing fits, return empty
+        let(
+            fail_msg = str("          ✗ No groups fit at all - returning empty")
+        )
+        echo(fail_msg)
         [[], 0, 0];
 
 function generate_individual_sample_positions(num_samples, sample_width, min_spacing, interior_width) =
@@ -387,13 +464,26 @@ function generate_mixed_group_positions(complete_groups, samples_per_group, part
         total_group_spacing = (complete_groups > 0 && partial_group_samples > 0) ? group_spacing : 0,
         total_layout_width = complete_width + total_group_spacing + partial_width,
         
+        layout_msg = str("            Layout widths: complete=", complete_width, ", partial=", partial_width, 
+                        ", spacing=", total_group_spacing, ", total=", total_layout_width)
+    )
+    echo(layout_msg)
+    let(
         // Center the entire layout
         layout_start_x = -total_layout_width / 2,
         
+        positioning_msg = str("            Positioning: layout_start_x=", layout_start_x)
+    )
+    echo(positioning_msg)
+    let(
         // Generate complete groups with adjusted positioning
         complete_positions = complete_groups > 0 ? 
             generate_group_positions_at_offset(complete_groups, samples_per_group, sample_width, min_spacing, group_spacing, layout_start_x) : [],
         
+        complete_msg = str("            Generated ", len(complete_positions), " positions from ", complete_groups, " complete groups")
+    )
+    echo(complete_msg)
+    let(
         // Calculate partial group start position
         partial_start_x = layout_start_x + complete_width + total_group_spacing + sample_width/2,
         
@@ -401,9 +491,19 @@ function generate_mixed_group_positions(complete_groups, samples_per_group, part
         partial_positions = partial_group_samples > 0 ? 
             [for (i = [0:partial_group_samples-1])
                 [partial_start_x + i * (sample_width + min_spacing), complete_groups]  // group_id = complete_groups
-            ] : []
+            ] : [],
+        
+        partial_msg = str("            Generated ", len(partial_positions), " positions from partial group (", 
+                         partial_group_samples, " samples, start_x=", partial_start_x, ")")
     )
-    concat(complete_positions, partial_positions);
+    echo(partial_msg)
+    let(
+        final_positions = concat(complete_positions, partial_positions),
+        
+        final_msg = str("            Total positions generated: ", len(final_positions))
+    )
+    echo(final_msg)
+    final_positions;
 
 function generate_group_positions_at_offset(group_count, samples_per_group, sample_width, min_spacing, group_spacing, start_x_offset) =
     [
@@ -455,8 +555,12 @@ function find_max_fitting_groups(group_count, samples_per_group, sample_width, m
 function generate_group_positions(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width) =
     let(
         total_width = calculate_actual_width(group_count, samples_per_group, sample_width, min_spacing, group_spacing),
-        start_x = -total_width / 2
+        start_x = -total_width / 2,
+        
+        gen_msg = str("            Generating regular group positions: groups=", group_count, ", samples_per_group=", samples_per_group, 
+                     ", total_width=", total_width, ", start_x=", start_x)
     )
+    echo(gen_msg)
     [
         for (group_idx = [0:group_count-1])
             let(
