@@ -4,7 +4,7 @@
 use <algorithms/grouped_v2.scad>
 
 // Generate physical 3D label objects for printing
-module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=10.0, label_text_mode="auto", label_custom_text="", label_position="center", label_width=76.0, label_height=10.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
     
     interior_width = (box_width * l_grid) - (2 * wall_thickness);
     interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -18,7 +18,7 @@ module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thi
     if (len(positions) > 0) {
         // Calculate label positions using the same logic as the main holder
         label_positions = calculate_label_positions(positions, group_spacing, label_position, 
-                                                   label_width, label_height, sample_width, sample_thickness);
+                                                   label_height, label_width, sample_width, sample_thickness);
         
         if (len(label_positions) > 0) {
             echo(str("Generating ", len(label_positions), " physical labels"));
@@ -39,7 +39,7 @@ module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thi
                 
                 // Create the physical label at the calculated position
                 translate([label_x, label_y, 0]) 
-                    create_physical_label(label_text, is_rotated, label_width, label_height, label_thickness,
+                    create_physical_label(label_text, is_rotated, label_height, label_width, label_thickness,
                                         magnet_diameter, magnet_thickness, magnet_count,
                                         text_style, text_depth, font_size, font_family);
             }
@@ -52,11 +52,13 @@ module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thi
 }
 
 // Create a single physical label with text and magnet holes
-module create_physical_label(text, is_rotated, label_width, label_height, label_thickness, magnet_diameter, magnet_thickness, magnet_count, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+module create_physical_label(text, is_rotated, label_height, label_width, label_thickness, magnet_diameter, magnet_thickness, magnet_count, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
     
     // Adjust label dimensions based on rotation
-    actual_width = is_rotated ? label_height : label_width;
-    actual_height = is_rotated ? label_width : label_height;
+    // When samples are normal: label is 10mm(X) × 76mm(Y) to align with sample orientation  
+    // When samples are rotated: label is 76mm(X) × 10mm(Y) to align with sample orientation
+    actual_width = is_rotated ? label_width : label_height;
+    actual_height = is_rotated ? label_height : label_width;
     
     // Calculate font size if auto (0)
     calculated_font_size = font_size > 0 ? font_size : min(actual_width * 0.15, actual_height * 0.3);
@@ -76,7 +78,7 @@ module create_physical_label(text, is_rotated, label_width, label_height, label_
                 cube([actual_width, actual_height, label_thickness]);
             
             // Subtract magnet holes
-            magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+            magnet_positions = calculate_magnet_positions(label_height, label_width, magnet_count, is_rotated, magnet_diameter);
             
             for (i = [0:len(magnet_positions)-1]) {
                 magnet_pos = magnet_positions[i];

@@ -1,6 +1,6 @@
 use <../vallidation.scad>
 
-module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, enable_labels=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=10.0, enable_labels=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=76.0, label_height=10.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
   
     interior_width = (box_width * l_grid) - (2 * wall_thickness);
     interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -38,7 +38,7 @@ module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side
     if (enable_labels && len(positions) > 0) {
         // Now positions contains ALL final sample positions across all rows
         label_positions = calculate_label_positions(positions, group_spacing, label_position, 
-                                                   label_width, label_height, sample_width, sample_thickness);
+                                                   label_height, label_width, sample_width, sample_thickness);
         
         if (len(label_positions) > 0) {
             echo(str("Generated ", len(label_positions), " label positions"));
@@ -50,7 +50,7 @@ module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side
                 is_rotated = label_pos[2];
                 
                 // Create magnet holes for this label
-                create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, 
+                create_label_magnet_holes(label_x, label_y, is_rotated, label_height, label_width, 
                                         magnet_diameter, magnet_thickness, magnet_count, 
                                         box_height, cutout_start_z);
             }
@@ -652,7 +652,7 @@ module sample_cutout_shape(is_rotated, sample_width, sample_thickness, box_heigh
 }
 
 // Calculate label positions based on group positions and spacing
-function calculate_label_positions(positions, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+function calculate_label_positions(positions, group_spacing, label_position, label_height, label_width, sample_width, sample_thickness) =
     let(
         // Extract groups from positions - positions format: [x, y, is_rotated, group_id]
         groups_info = extract_group_info(positions),
@@ -676,7 +676,7 @@ function calculate_label_positions(positions, group_spacing, label_position, lab
                             
                             // Calculate label position between these groups in this row
                             label_pos = calculate_single_label_position(group1, group2, group_spacing, 
-                                                                       label_position, label_width, label_height,
+                                                                       label_position, label_height, label_width,
                                                                        sample_width, sample_thickness)
                         )
                         if (label_pos != undef) label_pos  // Only include if label fits
@@ -966,7 +966,7 @@ function find_insertion_point(sorted, x_coord) =
     len(sorted) / 2;
 
 // Calculate position for a single label between two groups
-function calculate_single_label_position(group1, group2, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+function calculate_single_label_position(group1, group2, group_spacing, label_position, label_height, label_width, sample_width, sample_thickness) =
     let(
         group1_id = group1[0],
         group1_center_x = group1[1],
@@ -987,10 +987,10 @@ function calculate_single_label_position(group1, group2, group_spacing, label_po
         spacing_end = group1_is_rotated ? group2[5] : group2[3],    // min_y for rotated, min_x for normal
         available_spacing = spacing_end - spacing_start,
         
-        spacing_msg = str("Groups ", group1_id, "-", group2_id, ": spacing=", available_spacing, ", label_width=", label_width)
+        spacing_msg = str("Groups ", group1_id, "-", group2_id, ": spacing=", available_spacing, ", label_height=", label_height)
     )
     echo(spacing_msg)
-    available_spacing < label_width ? undef :  // Label doesn't fit
+    available_spacing < label_height ? undef :  // Label doesn't fit
     let(
         // Calculate label position within the spacing (axis-aware)
         label_primary_pos = (spacing_start + spacing_end) / 2,  // Center of spacing
@@ -1006,10 +1006,10 @@ function calculate_single_label_position(group1, group2, group_spacing, label_po
     [label_x, label_y, label_is_rotated];
 
 // Create magnet holes for a label at the specified position
-module create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, magnet_diameter, magnet_thickness, magnet_count, box_height, cutout_start_z) {
+module create_label_magnet_holes(label_x, label_y, is_rotated, label_height, label_width, magnet_diameter, magnet_thickness, magnet_count, box_height, cutout_start_z) {
     
     // Calculate magnet positions within the label
-    magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+    magnet_positions = calculate_magnet_positions(label_height, label_width, magnet_count, is_rotated, magnet_diameter);
     
     for (i = [0:len(magnet_positions)-1]) {
         magnet_pos = magnet_positions[i];
@@ -1023,27 +1023,48 @@ module create_label_magnet_holes(label_x, label_y, is_rotated, label_width, labe
 }
 
 // Calculate positions for magnets within a label
-function calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated) =
-    magnet_count == 1 ? 
-        [[0, 0]] :  // Single magnet at center
-    magnet_count == 2 ?
-        // Two magnets distributed along the longer dimension of the label
-        // When samples are rotated, label spans along depth (Y), otherwise along width (X)
-        let(
-            // Choose the dimension to distribute magnets along based on sample orientation
-            primary_dimension = is_rotated ? label_height : label_width,
-            spacing = primary_dimension * 0.6,  // 60% of primary dimension between magnets
-            offset = spacing / 2
-        )
-        is_rotated ? 
-            [[0, -offset], [0, offset]] :  // Distribute along Y when rotated
-            [[-offset, 0], [offset, 0]] :   // Distribute along X when normal
-    // For more magnets, distribute them evenly along the primary dimension
+function calculate_magnet_positions(label_height, label_width, magnet_count, is_rotated, magnet_diameter=6.0) =
     let(
-        primary_dimension = is_rotated ? label_height : label_width,
-        spacing = primary_dimension * 0.8 / (magnet_count - 1),  // 80% of primary dimension span
-        start_offset = -primary_dimension * 0.4
+        // Label width (76mm) is longer than label height (10mm), so use width as primary dimension
+        primary_dimension = label_width,  // Always use label width as the long side
+        // Account for magnet radius to ensure holes don't exceed label bounds
+        magnet_radius = magnet_diameter / 2,
+        // Maximum safe position (half label width minus magnet radius)
+        max_safe_offset = (primary_dimension / 2) - magnet_radius,
+        // Use the safe offset with some additional margin (95% of safe area)
+        usable_length = max_safe_offset * 2 * 0.95,
+        // Maximum offset from center
+        max_offset = usable_length / 2,
+        
+        // Calculate positions based on magnet count
+        positions = magnet_count == 1 ? 
+            [[0, 0]] :  // Single magnet at center
+        magnet_count == 2 ?
+            // For 2 magnets: place at start and end (maximum separation)
+            [[-max_offset, 0], [max_offset, 0]] :
+            // For 3+ magnets: evenly distribute across full usable length
+            let(
+                spacing = usable_length / (magnet_count - 1),
+                start_pos = -max_offset
+            )
+            [for (i = [0:magnet_count-1]) [start_pos + i * spacing, 0]],
+            
+        // Final positioning based on orientation
+        final_positions = is_rotated ?
+            // When rotated: use X coordinates, Y=0
+            positions :
+            // When normal: use Y coordinates, X=0 (swap X and Y)
+            [for (pos = positions) [0, pos[0]]],
+            
+        // Debug messages
+        debug_msg = magnet_count == 1 ? 
+            str("Magnet positioning: 1 magnet at center [0,0]") :
+        magnet_count == 2 ?
+            str("Magnet positioning: 2 magnets at start/end, label_width=", label_width, "mm, magnet_diameter=", magnet_diameter, "mm, safe_usable_length=", usable_length, "mm, max_offset=±", max_offset, "mm") :
+            str("Magnet positioning: ", magnet_count, " magnets evenly spaced, label_width=", label_width, "mm, magnet_diameter=", magnet_diameter, "mm, safe_usable_length=", usable_length, "mm, spacing=", usable_length / (magnet_count - 1), "mm, range=±", max_offset, "mm"),
+            
+        orientation_msg = str("Final magnet positions (", is_rotated ? "rotated" : "normal", " orientation): ", final_positions)
     )
-    is_rotated ?
-        [for (i = [0:magnet_count-1]) [0, start_offset + i * spacing]] :  // Along Y when rotated
-        [for (i = [0:magnet_count-1]) [start_offset + i * spacing, 0]];   // Along X when normal
+    echo(debug_msg)
+    echo(orientation_msg)
+    final_positions;

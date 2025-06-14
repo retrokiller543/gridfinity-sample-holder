@@ -81,8 +81,8 @@ sh_label_custom_text = "Group 1,Group 2,Group 3";
 // Label position within group spacing area
 sh_label_position = "center"; // [start, center, end]
 // Label dimensions in millimeters
-sh_label_width = 10.0; // [3:0.5:100]
-sh_label_height = 8.0; // [3:0.5:300]
+sh_label_width = 76.0; // [3:0.5:100]
+sh_label_height = 10.0; // [3:0.5:300]
 sh_label_thickness = 3.5; // [1.5:0.1:6]
 
 /* [Magnet Settings] */
@@ -158,15 +158,12 @@ module mw_assembly_view() {
     }
 }
 
-/* // Default view - show assembly unless generate_labels is specifically enabled
-if (sh_generate_labels) {
-    // When generating labels, show only the plates (for 3MF export)
-    mw_plate_1();
-    translate([200, 0, 0]) mw_plate_2(); // Separate plates for printing
-} else {
-    // Normal preview mode - show assembly
+development_mode = true;
+
+// For development, show both plates in the assembly view
+if (development_mode) {
     mw_assembly_view();
-} */
+}
 
 // Display information
 echo("=== Gridfinity Sample Box Generator ===");
