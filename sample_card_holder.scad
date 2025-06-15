@@ -57,6 +57,8 @@ sh_cutout_start_z = 6.0; // [4:0.1:10]
 sh_algorithm_type = 2; // [0:Grid Layout, 1:Multi-Pass Grouping, 2:Single-Pass Grouping]
 // Row spacing for grouping algorithms (0 = auto-calculate)
 sh_row_spacing = 0; // [0:0.1:20]
+// Force sample orientation (auto = choose best fit, normal = 2.4mm along X, rotated = 76mm along X)
+sh_force_orientation = "auto"; // [auto, normal, rotated]
 
 /* [Grouping Settings] */
 // Enable group-based layout (instead of row-based)
@@ -74,6 +76,8 @@ sh_group_spacing = 10.0; // [1:0.1:100]
 sh_enable_labels = false; // [true, false]
 // Generate separate label objects for printing
 sh_generate_labels = false; // [true, false]
+// Include label and spacing for the first group in each row. This will reduce the number of samples per row but improve the experience with labels.
+sh_include_first_group_label = false; // [true, false]
 // Label text mode: auto generates G1, G2, etc., custom uses provided text
 sh_label_text_mode = "auto"; // [auto, custom]
 // Custom label text (comma-separated for multiple groups, e.g., "Sample A,Sample B,Sample C")
@@ -117,10 +121,10 @@ module mw_plate_1() {
                        sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
                        sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
                        sh_group_count, sh_samples_per_group, sh_group_spacing,
-                       sh_enable_labels, sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                       sh_enable_labels, sh_include_first_group_label, sh_label_text_mode, sh_label_custom_text, sh_label_position,
                        sh_label_width, sh_label_height, sh_label_thickness,
                        sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
-                       sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
+                       sh_text_style, sh_text_depth, sh_font_size, sh_font_family, sh_force_orientation);
         } else if (sh_algorithm_type == 1) {
             grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
                                   sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
@@ -141,10 +145,10 @@ module mw_plate_2() {
                               sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
                               sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
                               sh_group_count, sh_samples_per_group, sh_group_spacing,
-                              sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                              sh_include_first_group_label, sh_label_text_mode, sh_label_custom_text, sh_label_position,
                               sh_label_width, sh_label_height, sh_label_thickness,
                               sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
-                              sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
+                              sh_text_style, sh_text_depth, sh_font_size, sh_font_family, sh_force_orientation);
     }
 }
 
@@ -158,7 +162,7 @@ module mw_assembly_view() {
     }
 }
 
-development_mode = true;
+development_mode = false;
 
 // For development, show both plates in the assembly view
 if (development_mode) {

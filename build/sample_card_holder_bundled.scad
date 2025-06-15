@@ -45,6 +45,8 @@ sh_cutout_start_z = 6.0; // [4:0.1:10]
 sh_algorithm_type = 2; // [0:Grid Layout, 1:Multi-Pass Grouping, 2:Single-Pass Grouping]
 // Row spacing for grouping algorithms (0 = auto-calculate)
 sh_row_spacing = 0; // [0:0.1:20]
+// Force sample orientation (auto = choose best fit, normal = 2.4mm along X, rotated = 76mm along X)
+sh_force_orientation = "auto"; // [auto, normal, rotated]
 
 /* [Grouping Settings] */
 // Enable group-based layout (instead of row-based)
@@ -62,6 +64,8 @@ sh_group_spacing = 10.0; // [1:0.1:100]
 sh_enable_labels = false; // [true, false]
 // Generate separate label objects for printing
 sh_generate_labels = false; // [true, false]
+// Include label and spacing for the first group in each row. This will reduce the number of samples per row but improve the experience with labels.
+sh_include_first_group_label = false; // [true, false]
 // Label text mode: auto generates G1, G2, etc., custom uses provided text
 sh_label_text_mode = "auto"; // [auto, custom]
 // Custom label text (comma-separated for multiple groups, e.g., "Sample A,Sample B,Sample C")
@@ -69,8 +73,8 @@ sh_label_custom_text = "Group 1,Group 2,Group 3";
 // Label position within group spacing area
 sh_label_position = "center"; // [start, center, end]
 // Label dimensions in millimeters
-sh_label_width = 10.0; // [3:0.5:100]
-sh_label_height = 8.0; // [3:0.5:300]
+sh_label_width = 76.0; // [3:0.5:100]
+sh_label_height = 10.0; // [3:0.5:300]
 sh_label_thickness = 3.5; // [1.5:0.1:6]
 
 /* [Magnet Settings] */
@@ -105,10 +109,10 @@ module mw_plate_1() {
                        sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
                        sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
                        sh_group_count, sh_samples_per_group, sh_group_spacing,
-                       sh_enable_labels, sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                       sh_enable_labels, sh_include_first_group_label, sh_label_text_mode, sh_label_custom_text, sh_label_position,
                        sh_label_width, sh_label_height, sh_label_thickness,
                        sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
-                       sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
+                       sh_text_style, sh_text_depth, sh_font_size, sh_font_family, sh_force_orientation);
         } else if (sh_algorithm_type == 1) {
             grouped_sample_cutouts(sh_box_width, sh_box_depth, sh_box_height, l_grid, sh_wall_thickness, 
                                   sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
@@ -705,7 +709,7 @@ module mw_plate_1() {
     // ===== End: vallidation.scad =====
 
   
-  module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, enable_labels=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+  module grouped_v2(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=10.0, enable_labels=false, include_first_group_label=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=76.0, label_height=10.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold", force_orientation="auto") {
     
       interior_width = (box_width * l_grid) - (2 * wall_thickness);
       interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -723,9 +727,9 @@ module mw_plate_1() {
       use_simple_layout = !enable_grouping || (group_count == 0 && samples_per_group == 0);
       
       positions = use_simple_layout ? 
-          generate_simple_layout(interior_width, interior_depth, sample_width, sample_thickness, min_spacing, row_spacing) :
+          generate_simple_layout(interior_width, interior_depth, sample_width, sample_thickness, min_spacing, row_spacing, force_orientation) :
           generate_single_pass_layout(interior_width, interior_depth, sample_width, sample_thickness, 
-                                    min_spacing, group_count, samples_per_group, group_spacing, row_spacing);
+                                    min_spacing, group_count, samples_per_group, group_spacing, row_spacing, include_first_group_label, force_orientation);
       
       echo(str("Generated ", len(positions), " sample positions"));
       
@@ -743,7 +747,7 @@ module mw_plate_1() {
       if (enable_labels && len(positions) > 0) {
           // Now positions contains ALL final sample positions across all rows
           label_positions = calculate_label_positions(positions, group_spacing, label_position, 
-                                                     label_width, label_height, sample_width, sample_thickness);
+                                                     label_height, label_width, sample_width, sample_thickness, include_first_group_label);
           
           if (len(label_positions) > 0) {
               echo(str("Generated ", len(label_positions), " label positions"));
@@ -755,7 +759,7 @@ module mw_plate_1() {
                   is_rotated = label_pos[2];
                   
                   // Create magnet holes for this label
-                  create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, 
+                  create_label_magnet_holes(label_x, label_y, is_rotated, label_height, label_width, 
                                           magnet_diameter, magnet_thickness, magnet_count, 
                                           box_height, cutout_start_z);
               }
@@ -767,7 +771,7 @@ module mw_plate_1() {
       sample_size > available_space ? 0 :
       1 + floor((available_space - sample_size) / (sample_size + min_spacing));
   
-  function generate_simple_layout(interior_width, interior_depth, sample_width, sample_thickness, min_spacing, row_spacing) =
+  function generate_simple_layout(interior_width, interior_depth, sample_width, sample_thickness, min_spacing, row_spacing, force_orientation="auto") =
       let(
           // Test both orientations to see which one allows more samples total
           normal_layout = test_simple_orientation(interior_width, interior_depth, sample_thickness, sample_width, min_spacing, row_spacing, false),
@@ -776,9 +780,17 @@ module mw_plate_1() {
           normal_total = len(normal_layout),
           rotated_total = len(rotated_layout),
           
-          use_rotated = rotated_total > normal_total,
-          final_layout = use_rotated ? rotated_layout : normal_layout
+          // Choose orientation based on force_orientation parameter
+          use_rotated = force_orientation == "rotated" ? true :
+                       force_orientation == "normal" ? false :
+                       rotated_total > normal_total,  // auto: choose best fit
+          final_layout = use_rotated ? rotated_layout : normal_layout,
+          
+          orientation_msg = str("Simple orientation selection: force_orientation=", force_orientation, 
+                               ", normal_total=", normal_total, ", rotated_total=", rotated_total, 
+                               ", use_rotated=", use_rotated)
       )
+      echo(orientation_msg)
       final_layout;
   
   function test_simple_orientation(interior_width, interior_depth, sample_w, sample_d, min_spacing, row_spacing, is_rotated) =
@@ -819,27 +831,34 @@ module mw_plate_1() {
       ];
   
   function generate_single_pass_layout(interior_width, interior_depth, sample_width, sample_thickness, 
-                                     min_spacing, group_count, samples_per_group, group_spacing, row_spacing) =
+                                     min_spacing, group_count, samples_per_group, group_spacing, row_spacing, include_first_group_label=false, force_orientation="auto") =
       let(
           // Test both orientations to see which one allows more samples total
           // Normal: thickness along X, width along Y  
           normal_layout = test_orientation_layout(interior_width, interior_depth, sample_thickness, sample_width, 
-                                                 min_spacing, group_count, samples_per_group, group_spacing, row_spacing, false),
+                                                 min_spacing, group_count, samples_per_group, group_spacing, row_spacing, false, include_first_group_label),
           // Rotated: width along X, thickness along Y
           rotated_layout = test_orientation_layout(interior_width, interior_depth, sample_width, sample_thickness, 
-                                                  min_spacing, group_count, samples_per_group, group_spacing, row_spacing, true),
+                                                  min_spacing, group_count, samples_per_group, group_spacing, row_spacing, true, include_first_group_label),
           
           normal_total = len(normal_layout),
           rotated_total = len(rotated_layout),
           
-          // Choose the orientation that gives us more samples
-          use_rotated = rotated_total > normal_total,
-          final_layout = use_rotated ? rotated_layout : normal_layout
+          // Choose orientation based on force_orientation parameter
+          use_rotated = force_orientation == "rotated" ? true :
+                       force_orientation == "normal" ? false :
+                       rotated_total > normal_total,  // auto: choose best fit
+          final_layout = use_rotated ? rotated_layout : normal_layout,
+          
+          orientation_msg = str("Orientation selection: force_orientation=", force_orientation, 
+                               ", normal_total=", normal_total, ", rotated_total=", rotated_total, 
+                               ", use_rotated=", use_rotated)
       )
+      echo(orientation_msg)
       final_layout;
   
   function test_orientation_layout(interior_width, interior_depth, sample_w, sample_d, 
-                                  min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated) =
+                                  min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated, include_first_group_label=false) =
       let(
           // Check if samples fit in this orientation
           sample_fits_width = sample_w <= interior_width,
@@ -869,19 +888,19 @@ module mw_plate_1() {
           // Calculate layout based on grouping direction
           layout_data = group_along_width ?
               generate_width_grouped_layout(interior_width, interior_depth, sample_w, sample_d, 
-                                          min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated) :
+                                          min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated, include_first_group_label) :
               generate_depth_grouped_layout(interior_width, interior_depth, sample_w, sample_d, 
-                                          min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated)
+                                          min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated, include_first_group_label)
       )
       layout_data;
   
   function generate_width_grouped_layout(interior_width, interior_depth, sample_w, sample_d, 
-                                        min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated) =
+                                        min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated, include_first_group_label=false) =
       let(
           // Group across the width (X-axis) - use the correct sample dimension for X-axis
           sample_x_dim = sample_w, // sample_w is already the X-dimension for the given orientation
           first_row_data = generate_first_row_positions(interior_width, sample_x_dim, min_spacing, 
-                                                      group_count, samples_per_group, group_spacing),
+                                                      group_count, samples_per_group, group_spacing, include_first_group_label),
           first_row_positions = first_row_data[0],
           row_width = first_row_data[1],
           
@@ -901,11 +920,13 @@ module mw_plate_1() {
       all_positions;
   
   function generate_depth_grouped_layout(interior_width, interior_depth, sample_w, sample_d, 
-                                        min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated) =
+                                        min_spacing, group_count, samples_per_group, group_spacing, row_spacing, is_rotated, include_first_group_label=false) =
       let(
-          // Group across the depth (Y-axis) - swapped logic
-          first_col_data = generate_first_row_positions(interior_depth, sample_d, min_spacing, 
-                                                       group_count, samples_per_group, group_spacing),
+          // Group across the depth (Y-axis) - for rotated samples, first group label spacing is in Y direction
+          // So we need to reduce interior_depth instead of interior_width
+          effective_interior_depth = include_first_group_label ? interior_depth - group_spacing : interior_depth,
+          first_col_data = generate_first_col_positions(effective_interior_depth, sample_d, min_spacing, 
+                                                       group_count, samples_per_group, group_spacing, include_first_group_label),
           first_col_positions = first_col_data[0],
           col_depth = first_col_data[1],
           
@@ -949,11 +970,14 @@ module mw_plate_1() {
                   [col_x, y_pos, use_rotated, unique_group_id]
       ];
   
-  function generate_first_row_positions(interior_width, sample_width, min_spacing, group_count, samples_per_group, group_spacing) =
+  // Generate positions for the first column (for depth grouping - rotated samples)
+  function generate_first_col_positions(interior_depth, sample_depth, min_spacing, group_count, samples_per_group, group_spacing, include_first_group_label=false) =
       let(
-          max_samples_per_row = floor(interior_width / (sample_width + min_spacing)),
+          // Reduce available depth if we need to reserve space for first group label
+          available_depth = include_first_group_label ? interior_depth - group_spacing : interior_depth,
+          max_samples_per_col = floor(available_depth / (sample_depth + min_spacing)),
           
-          debug_msg = str("    Max samples per row: ", max_samples_per_row, " (width: ", interior_width, ", sample: ", sample_width, ", min_spacing: ", min_spacing, ")")
+          debug_msg = str("    Max samples per col: ", max_samples_per_col, " (available_depth: ", available_depth, ", interior_depth: ", interior_depth, ", include_first_group_label: ", include_first_group_label, ", group_spacing: ", group_spacing, ")")
       )
       echo(debug_msg)
       let(
@@ -964,7 +988,42 @@ module mw_plate_1() {
       echo(grouping_mode_msg)
       let(
           auto_data = group_count == 0 ? 
-              calculate_auto_grouping(max_samples_per_row, sample_width, min_spacing, group_spacing, interior_width, samples_per_group) :
+              calculate_auto_grouping(max_samples_per_col, sample_depth, min_spacing, group_spacing, available_depth, samples_per_group) :
+              [group_count, samples_per_group > 0 ? samples_per_group : max(1, floor(max_samples_per_col / group_count))],
+          
+          effective_group_count = auto_data[0],
+          effective_samples_per_group = auto_data[1],
+          
+          debug_msg2 = str("    Effective groups: ", effective_group_count, ", samples per group: ", effective_samples_per_group)
+      )
+      echo(debug_msg2)
+      let(
+          // Generate positions for each group - pass original samples_per_group to preserve user intent
+          group_data = generate_groups_in_col(effective_group_count, effective_samples_per_group, 
+                                            sample_depth, min_spacing, group_spacing, available_depth, samples_per_group, group_count, include_first_group_label),
+          positions = group_data[0],
+          total_depth = group_data[1]
+      )
+      [positions, total_depth];
+  
+  function generate_first_row_positions(interior_width, sample_width, min_spacing, group_count, samples_per_group, group_spacing, include_first_group_label=false) =
+      let(
+          // Reduce available width if we need to reserve space for first group label
+          available_width = include_first_group_label ? interior_width - group_spacing : interior_width,
+          max_samples_per_row = floor(available_width / (sample_width + min_spacing)),
+          
+          debug_msg = str("    Max samples per row: ", max_samples_per_row, " (available_width: ", available_width, ", interior_width: ", interior_width, ", include_first_group_label: ", include_first_group_label, ", group_spacing: ", group_spacing, ")")
+      )
+      echo(debug_msg)
+      let(
+          // Auto-calculate group settings if not specified
+          grouping_mode_msg = str("    Grouping mode: ", group_count == 0 ? "auto" : "manual", 
+                                 " (requested: groups=", group_count, ", samples_per_group=", samples_per_group, ")")
+      )
+      echo(grouping_mode_msg)
+      let(
+          auto_data = group_count == 0 ? 
+              calculate_auto_grouping(max_samples_per_row, sample_width, min_spacing, group_spacing, available_width, samples_per_group) :
               [group_count, samples_per_group > 0 ? samples_per_group : max(1, floor(max_samples_per_row / group_count))],
           
           effective_group_count = auto_data[0],
@@ -976,7 +1035,7 @@ module mw_plate_1() {
       let(
           // Generate positions for each group - pass original samples_per_group to preserve user intent
           group_data = generate_groups_in_row(effective_group_count, effective_samples_per_group, 
-                                            sample_width, min_spacing, group_spacing, interior_width, samples_per_group, group_count),
+                                            sample_width, min_spacing, group_spacing, available_width, samples_per_group, group_count, include_first_group_label),
           positions = group_data[0],
           total_width = group_data[1]
       )
@@ -1037,11 +1096,30 @@ module mw_plate_1() {
           )
           find_max_fitting_groups(max_possible_groups, samples_per_group, sample_width, min_spacing, group_spacing, interior_width);
   
-  function generate_groups_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0) =
+  // Generate groups in a column (for depth grouping)
+  function generate_groups_in_col(group_count, samples_per_group, sample_depth, min_spacing, group_spacing, interior_depth, original_samples_per_group=0, original_group_count=0, include_first_group_label=false) =
+      let(
+          // Try to fit all requested groups first
+          positions_data = try_fit_groups_with_adjustment(group_count, samples_per_group, sample_depth, 
+                                                        min_spacing, group_spacing, interior_depth, original_samples_per_group, original_group_count, include_first_group_label),
+          positions = positions_data[0],
+          actual_group_count = positions_data[1],
+          actual_samples_per_group = positions_data[2],
+          
+          actual_depth = calculate_actual_width(actual_group_count, actual_samples_per_group, sample_depth, 
+                                              min_spacing, group_spacing),
+          
+          // Apply Y-direction offset for column grouping when first group label is enabled
+          final_positions = include_first_group_label ? 
+              [for (pos = positions) [pos[0], pos[1] + group_spacing/2]] : positions
+      )
+      [final_positions, actual_depth];
+  
+  function generate_groups_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0, include_first_group_label=false) =
       let(
           // Try to fit all requested groups first
           positions_data = try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, 
-                                                        min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count),
+                                                        min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count, include_first_group_label),
           positions = positions_data[0],
           actual_group_count = positions_data[1],
           actual_samples_per_group = positions_data[2],
@@ -1051,7 +1129,7 @@ module mw_plate_1() {
       )
       [positions, actual_width];
   
-  function try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0) =
+  function try_fit_groups_with_adjustment(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0, include_first_group_label=false) =
       let(
           // First try with requested settings
           fits_as_requested = check_groups_fit_in_row(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width),
@@ -1077,9 +1155,9 @@ module mw_plate_1() {
                   auto_partial_msg = str("      Auto-group mode: trying ", group_count + 1, " groups to maximize usage")
               )
               echo(auto_partial_msg)
-              fit_partial_groups(group_count + 1, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count) :
+              fit_partial_groups(group_count + 1, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count, include_first_group_label) :
               // In manual mode, just generate positions as requested
-              [generate_group_positions(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width), 
+              [apply_first_group_offset(generate_group_positions(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width), include_first_group_label, group_spacing), 
                group_count, samples_per_group] :
           // If it doesn't fit, try reducing samples per group first, then group count
           let(
@@ -1117,16 +1195,16 @@ module mw_plate_1() {
                   samples_adjust_msg = str("        ✓ Adjusted samples per group from ", samples_per_group, " to ", adjusted_samples, " - keeping all ", group_count, " groups")
               )
               echo(samples_adjust_msg)
-              [generate_group_positions(group_count, adjusted_samples, sample_width, min_spacing, group_spacing, interior_width),
+              [apply_first_group_offset(generate_group_positions(group_count, adjusted_samples, sample_width, min_spacing, group_spacing, interior_width), include_first_group_label, group_spacing),
                group_count, adjusted_samples] :
               // If groups don't fit, find how many complete groups + partial group we can fit
               let(
                   partial_msg = str("        ✗ Can't fit all ", group_count, " groups - trying partial groups")
               )
               echo(partial_msg)
-              fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count);
+              fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group, original_group_count, include_first_group_label);
   
-  function fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0) =
+  function fit_partial_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width, original_samples_per_group=0, original_group_count=0, include_first_group_label=false) =
       let(
           // Find the maximum number of complete groups that fit
           max_complete_groups = find_max_fitting_groups(group_count, samples_per_group, sample_width, min_spacing, group_spacing, interior_width),
@@ -1170,8 +1248,8 @@ module mw_plate_1() {
                                   (partial_group_samples > 0 ? 1 : 0), " partial = ", total_groups, " groups")
           )
           echo(generation_msg)
-          [generate_mixed_group_positions(max_complete_groups, samples_per_group, partial_group_samples, 
-                                         sample_width, min_spacing, group_spacing, interior_width),
+          [apply_first_group_offset(generate_mixed_group_positions(max_complete_groups, samples_per_group, partial_group_samples, 
+                                                                   sample_width, min_spacing, group_spacing, interior_width), include_first_group_label, group_spacing),
            total_groups, samples_per_group] :
           // If nothing fits, return empty
           let(
@@ -1357,7 +1435,7 @@ module mw_plate_1() {
   }
   
   // Calculate label positions based on group positions and spacing
-  function calculate_label_positions(positions, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+  function calculate_label_positions(positions, group_spacing, label_position, label_height, label_width, sample_width, sample_thickness, include_first_group_label=false) =
       let(
           // Extract groups from positions - positions format: [x, y, is_rotated, group_id]
           groups_info = extract_group_info(positions),
@@ -1365,27 +1443,44 @@ module mw_plate_1() {
           label_calc_msg = str("Label calculation: ", len(groups_info), " groups found, group_spacing=", group_spacing)
       )
       echo(label_calc_msg)
-      len(groups_info) < 2 ? [] :  // Need at least 2 groups to have spacing between them
+      len(groups_info) < 1 ? [] :  // Need at least 1 group to have labels
       let(
           // Group by rows (groups with similar Y coordinates are in the same row)
           rows_with_groups = group_by_rows(groups_info),
           
-          // Calculate label positions for each row
-          label_positions = [
+          // Calculate label positions for each row - flatten manually
+          all_labels = [
               for (row = rows_with_groups)
-                  if (len(row) >= 2)  // Need at least 2 groups in a row for labels
-                      for (i = [0:len(row)-2])  // Between each pair of adjacent groups in this row
-                          let(
-                              group1 = row[i],
-                              group2 = row[i+1],
-                              
-                              // Calculate label position between these groups in this row
-                              label_pos = calculate_single_label_position(group1, group2, group_spacing, 
-                                                                         label_position, label_width, label_height,
-                                                                         sample_width, sample_thickness)
-                          )
-                          if (label_pos != undef) label_pos  // Only include if label fits
-          ]
+                  if (len(row) >= 1)  // Need at least 1 group in a row for potential labels
+                      each concat(
+                          // Optional: label for the first group in the row
+                          include_first_group_label && len(row) >= 1 ? 
+                              let(
+                                  first_group = row[0],
+                                  // Calculate label position before the first group
+                                  label_pos = calculate_first_group_label_position(first_group, group_spacing, 
+                                                                                 label_position, label_height, label_width,
+                                                                                 sample_width, sample_thickness)
+                              )
+                              label_pos != undef ? [label_pos] : [] : [],
+                          
+                          // Labels between adjacent groups (existing logic)
+                          len(row) >= 2 ? [
+                              for (i = [0:len(row)-2])  // Between each pair of adjacent groups in this row
+                                  let(
+                                      group1 = row[i],
+                                      group2 = row[i+1],
+                                      
+                                      // Calculate label position between these groups in this row
+                                      label_pos = calculate_single_label_position(group1, group2, group_spacing, 
+                                                                                 label_position, label_height, label_width,
+                                                                                 sample_width, sample_thickness)
+                                  )
+                                  if (label_pos != undef) label_pos  // Only include if label fits
+                          ] : []
+                      )
+          ],
+          label_positions = all_labels
       )
       label_positions;
   
@@ -1449,9 +1544,13 @@ module mw_plate_1() {
               group_by_x_coordinate(sorted_groups, row_tolerance) :  // When rotated, group by X (columns become rows)
               group_by_y_coordinate(sorted_groups, row_tolerance),   // When normal, group by Y (rows)
           
-          row_debug_msg = str("Grouped into ", len(rows), " ", is_rotated ? "columns" : "rows")
+          row_debug_msg = str("Grouped into ", len(rows), " ", is_rotated ? "columns" : "rows"),
+          
+          // Debug: show all group coordinates for diagnosis
+          debug_coordinates = [for (g = groups_info) [g[0], g[1], g[2]]]  // [group_id, center_x, center_y]
       )
       echo(row_debug_msg)
+      echo(str("All group coordinates: ", debug_coordinates))
       rows;
   
   // Sort groups by position (axis-aware)
@@ -1527,8 +1626,29 @@ module mw_plate_1() {
           group_up_to_3_by_y(sorted_groups, tolerance) :
       len(sorted_groups) <= 6 ?
           group_up_to_6_by_y(sorted_groups, tolerance) :
-      // Fallback: treat all as one row
-      [sorted_groups];
+      // For more than 6 groups, use a more robust grouping approach
+      group_many_by_y_coordinate(sorted_groups, tolerance);
+  
+  // Robust grouping function for many groups by Y coordinate
+  function group_many_by_y_coordinate(groups, tolerance) =
+      len(groups) == 0 ? [] :
+      let(
+          // Start with the first group as the first row
+          first_group = groups[0],
+          first_y = first_group[2],
+          
+          // Find all groups with similar Y coordinate (same row)
+          first_row = [for (g = groups) if (abs(g[2] - first_y) <= tolerance) g],
+          
+          // Find remaining groups (different rows)
+          remaining = [for (g = groups) if (abs(g[2] - first_y) > tolerance) g],
+          
+          // Sort the first row by X coordinate for consistency
+          sorted_first_row = sort_row_by_x(first_row)
+      )
+      len(remaining) == 0 ? 
+          [sorted_first_row] :  // Only one row
+          concat([sorted_first_row], group_many_by_y_coordinate(remaining, tolerance));  // Recursively group remaining
   
   // Group up to 3 groups by Y coordinate
   function group_up_to_3_by_y(groups, tolerance) =
@@ -1550,18 +1670,8 @@ module mw_plate_1() {
   
   // Group up to 6 groups by Y coordinate
   function group_up_to_6_by_y(groups, tolerance) =
-      let(
-          // Find unique Y values
-          y_values = [for (g = groups) g[2]],
-          first_y = y_values[0],
-          
-          // Group by first Y value
-          first_row = [for (g = groups) if (abs(g[2] - first_y) <= tolerance) g],
-          remaining = [for (g = groups) if (abs(g[2] - first_y) > tolerance) g]
-      )
-      len(remaining) == 0 ? [sort_row_by_x(first_row)] :
-      // For remaining groups, just make a second row without recursive grouping
-      [sort_row_by_x(first_row), sort_row_by_x(remaining)];
+      // Use the robust recursive function instead of the limited 2-row approach
+      group_many_by_y_coordinate(groups, tolerance);
   
   // Group groups by X coordinate within tolerance (for rotated samples) - manual grouping
   function group_by_x_coordinate(sorted_groups, tolerance) =
@@ -1570,8 +1680,33 @@ module mw_plate_1() {
           group_up_to_3_by_x(sorted_groups, tolerance) :
       len(sorted_groups) <= 6 ?
           group_up_to_6_by_x(sorted_groups, tolerance) :
-      // Fallback: treat all as one column
-      [sorted_groups];
+      // For more than 6 groups, use a more robust grouping approach
+      group_many_by_x_coordinate(sorted_groups, tolerance);
+  
+  // Robust grouping function for many groups by X coordinate
+  function group_many_by_x_coordinate(groups, tolerance) =
+      len(groups) == 0 ? [] :
+      let(
+          // Start with the first group as the first column
+          first_group = groups[0],
+          first_x = first_group[1],
+          
+          // Find all groups with similar X coordinate (same column)
+          first_col = [for (g = groups) if (abs(g[1] - first_x) <= tolerance) g],
+          
+          // Find remaining groups (different columns)
+          remaining = [for (g = groups) if (abs(g[1] - first_x) > tolerance) g],
+          
+          // Sort the first column by Y coordinate for consistency
+          sorted_first_col = sort_col_by_y(first_col),
+          
+          // Debug output
+          debug_msg = str("X grouping: first_x=", first_x, ", first_col_count=", len(first_col), ", remaining_count=", len(remaining))
+      )
+      echo(debug_msg)
+      len(remaining) == 0 ? 
+          [sorted_first_col] :  // Only one column
+          concat([sorted_first_col], group_many_by_x_coordinate(remaining, tolerance));  // Recursively group remaining
   
   // Group up to 3 groups by X coordinate
   function group_up_to_3_by_x(groups, tolerance) =
@@ -1593,18 +1728,8 @@ module mw_plate_1() {
   
   // Group up to 6 groups by X coordinate
   function group_up_to_6_by_x(groups, tolerance) =
-      let(
-          // Find unique X values
-          x_values = [for (g = groups) g[1]],
-          first_x = x_values[0],
-          
-          // Group by first X value
-          first_col = [for (g = groups) if (abs(g[1] - first_x) <= tolerance) g],
-          remaining = [for (g = groups) if (abs(g[1] - first_x) > tolerance) g]
-      )
-      len(remaining) == 0 ? [sort_col_by_y(first_col)] :
-      // For remaining groups, just make a second column without recursive grouping  
-      [sort_col_by_y(first_col), sort_col_by_y(remaining)];
+      // Use the robust recursive function instead of the limited 2-column approach
+      group_many_by_x_coordinate(groups, tolerance);
   
   // Sort a column of groups by Y coordinate (for rotated samples) - simple sort
   function sort_col_by_y(col_groups) =
@@ -1670,8 +1795,70 @@ module mw_plate_1() {
       // For larger arrays, just return middle position
       len(sorted) / 2;
   
+  // Calculate position for a label before the first group in a row
+  function calculate_first_group_label_position(group, group_spacing, label_position, label_height, label_width, sample_width, sample_thickness) =
+      let(
+          group_id = group[0],
+          group_center_x = group[1],
+          group_center_y = group[2],
+          group_min_x = group[3],
+          group_min_y = group[5],
+          group_is_rotated = group[7],
+          
+          // The logic is:
+          // 1. We reduced available space by group_spacing
+          // 2. We offset all sample positions by group_spacing/2 to center the layout
+          // 3. The reserved space is from the edge of the container to the start of the first group
+          //    This space should be group_spacing wide
+          
+          // The logic should be much simpler:
+          // - Look at all groups in the same row/column as this group
+          // - Find which groups have the same Y coordinate (for width grouping) or same X coordinate (for depth grouping)
+          // - The spacing for the first group should be in the direction where groups are arranged
+          
+          // From the algorithm, I know that:
+          // - generate_width_grouped_layout groups along X-axis (samples fit along width)
+          // - generate_depth_grouped_layout groups along Y-axis (samples fit along depth)
+          
+          // But I need to determine this from the group positions. 
+          // Since group_id=0 should be the first in its row/column, I can use the grouping axis.
+          // For normal samples: if grouping along width, spacing is in X direction  
+          // For rotated samples: if grouping along depth, spacing is in X direction
+          
+          // Determine the grouping direction based on sample orientation:
+          // - Normal samples (2.4mm along X): grouping_direction=width -> groups along X-axis -> first group spacing in X
+          // - Rotated samples (76mm along X): grouping_direction=depth -> groups along Y-axis -> first group spacing in Y
+          
+          // For rotated samples, groups are in columns (Y direction), so spacing should be in Y
+          // For normal samples, groups are in rows (X direction), so spacing should be in X
+          use_y_for_spacing = group_is_rotated,  // rotated uses Y, normal uses X
+          
+          spacing_end = use_y_for_spacing ? group_min_y : group_min_x,
+          spacing_start = spacing_end - group_spacing,
+          available_spacing = group_spacing,
+          
+          spacing_msg = str("First group ", group_id, ": group_min=[", group_min_x, ",", group_min_y, "], use_y_for_spacing=", use_y_for_spacing, ", spacing=", available_spacing, ", label_height=", label_height, ", spacing_start=", spacing_start, ", spacing_end=", spacing_end)
+      )
+      echo(spacing_msg)
+      available_spacing < label_height ? undef :  // Label doesn't fit
+      let(
+          // Calculate label position within the reserved spacing (axis-aware)
+          label_primary_pos = (spacing_start + spacing_end) / 2,  // Center of reserved spacing
+          
+          // Place label in the correct direction based on grouping
+          label_x = use_y_for_spacing ? group_center_x : label_primary_pos,
+          label_y = use_y_for_spacing ? label_primary_pos : group_center_y,
+          
+          // Use the same rotation as the samples
+          label_is_rotated = group_is_rotated,
+          
+          final_msg = str("First group ", group_id, " label position: [", label_x, ", ", label_y, "], rotated=", label_is_rotated)
+      )
+      echo(final_msg)
+      [label_x, label_y, label_is_rotated];
+  
   // Calculate position for a single label between two groups
-  function calculate_single_label_position(group1, group2, group_spacing, label_position, label_width, label_height, sample_width, sample_thickness) =
+  function calculate_single_label_position(group1, group2, group_spacing, label_position, label_height, label_width, sample_width, sample_thickness) =
       let(
           group1_id = group1[0],
           group1_center_x = group1[1],
@@ -1692,10 +1879,10 @@ module mw_plate_1() {
           spacing_end = group1_is_rotated ? group2[5] : group2[3],    // min_y for rotated, min_x for normal
           available_spacing = spacing_end - spacing_start,
           
-          spacing_msg = str("Groups ", group1_id, "-", group2_id, ": spacing=", available_spacing, ", label_width=", label_width)
+          spacing_msg = str("Groups ", group1_id, "-", group2_id, ": spacing=", available_spacing, ", label_height=", label_height)
       )
       echo(spacing_msg)
-      available_spacing < label_width ? undef :  // Label doesn't fit
+      available_spacing < label_height ? undef :  // Label doesn't fit
       let(
           // Calculate label position within the spacing (axis-aware)
           label_primary_pos = (spacing_start + spacing_end) / 2,  // Center of spacing
@@ -1711,10 +1898,10 @@ module mw_plate_1() {
       [label_x, label_y, label_is_rotated];
   
   // Create magnet holes for a label at the specified position
-  module create_label_magnet_holes(label_x, label_y, is_rotated, label_width, label_height, magnet_diameter, magnet_thickness, magnet_count, box_height, cutout_start_z) {
+  module create_label_magnet_holes(label_x, label_y, is_rotated, label_height, label_width, magnet_diameter, magnet_thickness, magnet_count, box_height, cutout_start_z) {
       
       // Calculate magnet positions within the label
-      magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+      magnet_positions = calculate_magnet_positions(label_height, label_width, magnet_count, is_rotated, magnet_diameter);
       
       for (i = [0:len(magnet_positions)-1]) {
           magnet_pos = magnet_positions[i];
@@ -1728,30 +1915,71 @@ module mw_plate_1() {
   }
   
   // Calculate positions for magnets within a label
-  function calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated) =
-      magnet_count == 1 ? 
-          [[0, 0]] :  // Single magnet at center
-      magnet_count == 2 ?
-          // Two magnets distributed along the longer dimension of the label
-          // When samples are rotated, label spans along depth (Y), otherwise along width (X)
-          let(
-              // Choose the dimension to distribute magnets along based on sample orientation
-              primary_dimension = is_rotated ? label_height : label_width,
-              spacing = primary_dimension * 0.6,  // 60% of primary dimension between magnets
-              offset = spacing / 2
-          )
-          is_rotated ? 
-              [[0, -offset], [0, offset]] :  // Distribute along Y when rotated
-              [[-offset, 0], [offset, 0]] :   // Distribute along X when normal
-      // For more magnets, distribute them evenly along the primary dimension
+  function calculate_magnet_positions(label_height, label_width, magnet_count, is_rotated, magnet_diameter=6.0) =
       let(
-          primary_dimension = is_rotated ? label_height : label_width,
-          spacing = primary_dimension * 0.8 / (magnet_count - 1),  // 80% of primary dimension span
-          start_offset = -primary_dimension * 0.4
+          // Label width (76mm) is longer than label height (10mm), so use width as primary dimension
+          primary_dimension = label_width,  // Always use label width as the long side
+          // Account for magnet radius to ensure holes don't exceed label bounds
+          magnet_radius = magnet_diameter / 2,
+          // Maximum safe position (half label width minus magnet radius)
+          max_safe_offset = (primary_dimension / 2) - magnet_radius,
+          // Use the safe offset with some additional margin (95% of safe area)
+          usable_length = max_safe_offset * 2 * 0.95,
+          // Maximum offset from center
+          max_offset = usable_length / 2,
+          
+          // Calculate positions based on magnet count
+          positions = magnet_count == 1 ? 
+              [[0, 0]] :  // Single magnet at center
+          magnet_count == 2 ?
+              // For 2 magnets: place at start and end (maximum separation)
+              [[-max_offset, 0], [max_offset, 0]] :
+              // For 3+ magnets: evenly distribute across full usable length
+              let(
+                  spacing = usable_length / (magnet_count - 1),
+                  start_pos = -max_offset
+              )
+              [for (i = [0:magnet_count-1]) [start_pos + i * spacing, 0]],
+              
+          // Final positioning based on orientation
+          final_positions = is_rotated ?
+              // When rotated: use X coordinates, Y=0
+              positions :
+              // When normal: use Y coordinates, X=0 (swap X and Y)
+              [for (pos = positions) [0, pos[0]]],
+              
+          // Debug messages
+          debug_msg = magnet_count == 1 ? 
+              str("Magnet positioning: 1 magnet at center [0,0]") :
+          magnet_count == 2 ?
+              str("Magnet positioning: 2 magnets at start/end, label_width=", label_width, "mm, magnet_diameter=", magnet_diameter, "mm, safe_usable_length=", usable_length, "mm, max_offset=±", max_offset, "mm") :
+              str("Magnet positioning: ", magnet_count, " magnets evenly spaced, label_width=", label_width, "mm, magnet_diameter=", magnet_diameter, "mm, safe_usable_length=", usable_length, "mm, spacing=", usable_length / (magnet_count - 1), "mm, range=±", max_offset, "mm"),
+              
+          orientation_msg = str("Final magnet positions (", is_rotated ? "rotated" : "normal", " orientation): ", final_positions)
       )
-      is_rotated ?
-          [for (i = [0:magnet_count-1]) [0, start_offset + i * spacing]] :  // Along Y when rotated
-          [for (i = [0:magnet_count-1]) [start_offset + i * spacing, 0]];   // Along X when normal
+      echo(debug_msg)
+      echo(orientation_msg)
+      final_positions;
+  
+  // Apply offset to all positions when first group label is enabled
+  function apply_first_group_offset(positions, include_first_group_label, group_spacing) =
+      !include_first_group_label ? positions :
+      len(positions) == 0 ? [] :
+      let(
+          // Determine if we should offset in X or Y based on the sample orientation
+          // Look at the first position to determine rotation
+          first_pos = positions[0],
+          is_rotated = len(first_pos) > 2 ? first_pos[2] : false,
+          
+          // For rotated samples: groups along Y, so offset in Y direction
+          // For normal samples: groups along X, so offset in X direction  
+          use_y_offset = is_rotated
+      )
+      [for (pos = positions) 
+          use_y_offset ? 
+              [pos[0], pos[1] + group_spacing/2] :  // Offset in Y for rotated
+              [pos[0] + group_spacing/2, pos[1]]    // Offset in X for normal
+      ];
   // ===== End: grouped_v2.scad =====
 
 // Original: use <src/label_system.scad>
@@ -1765,7 +1993,7 @@ module mw_plate_1() {
   
   
   // Generate physical 3D label objects for printing
-  module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=3.0, label_text_mode="auto", label_custom_text="", label_position="center", label_width=20.0, label_height=8.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+  module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=10.0, include_first_group_label=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=76.0, label_height=10.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold", force_orientation="auto") {
       
       interior_width = (box_width * l_grid) - (2 * wall_thickness);
       interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -1774,12 +2002,12 @@ module mw_plate_1() {
       
       // Generate the same layout as the main holder to get label positions
       positions = generate_single_pass_layout(interior_width, interior_depth, sample_width, sample_thickness, 
-                                            min_spacing, group_count, samples_per_group, group_spacing, row_spacing);
+                                            min_spacing, group_count, samples_per_group, group_spacing, row_spacing, include_first_group_label, force_orientation);
       
       if (len(positions) > 0) {
           // Calculate label positions using the same logic as the main holder
           label_positions = calculate_label_positions(positions, group_spacing, label_position, 
-                                                     label_width, label_height, sample_width, sample_thickness);
+                                                     label_height, label_width, sample_width, sample_thickness, include_first_group_label);
           
           if (len(label_positions) > 0) {
               echo(str("Generating ", len(label_positions), " physical labels"));
@@ -1800,7 +2028,7 @@ module mw_plate_1() {
                   
                   // Create the physical label at the calculated position
                   translate([label_x, label_y, 0]) 
-                      create_physical_label(label_text, is_rotated, label_width, label_height, label_thickness,
+                      create_physical_label(label_text, is_rotated, label_height, label_width, label_thickness,
                                           magnet_diameter, magnet_thickness, magnet_count,
                                           text_style, text_depth, font_size, font_family);
               }
@@ -1813,11 +2041,13 @@ module mw_plate_1() {
   }
   
   // Create a single physical label with text and magnet holes
-  module create_physical_label(text, is_rotated, label_width, label_height, label_thickness, magnet_diameter, magnet_thickness, magnet_count, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+  module create_physical_label(text, is_rotated, label_height, label_width, label_thickness, magnet_diameter, magnet_thickness, magnet_count, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
       
       // Adjust label dimensions based on rotation
-      actual_width = is_rotated ? label_height : label_width;
-      actual_height = is_rotated ? label_width : label_height;
+      // When samples are normal: label is 10mm(X) × 76mm(Y) to align with sample orientation  
+      // When samples are rotated: label is 76mm(X) × 10mm(Y) to align with sample orientation
+      actual_width = is_rotated ? label_width : label_height;
+      actual_height = is_rotated ? label_height : label_width;
       
       // Calculate font size if auto (0)
       calculated_font_size = font_size > 0 ? font_size : min(actual_width * 0.15, actual_height * 0.3);
@@ -1837,7 +2067,7 @@ module mw_plate_1() {
                   cube([actual_width, actual_height, label_thickness]);
               
               // Subtract magnet holes
-              magnet_positions = calculate_magnet_positions(label_width, label_height, magnet_count, is_rotated);
+              magnet_positions = calculate_magnet_positions(label_height, label_width, magnet_count, is_rotated, magnet_diameter);
               
               for (i = [0:len(magnet_positions)-1]) {
                   magnet_pos = magnet_positions[i];
@@ -1998,10 +2228,10 @@ module mw_plate_2() {
                               sh_side_wall_thickness, sh_sample_width, sh_sample_thickness, 
                               sh_min_spacing, sh_cutout_start_z, sh_row_spacing, sh_enable_grouping,
                               sh_group_count, sh_samples_per_group, sh_group_spacing,
-                              sh_label_text_mode, sh_label_custom_text, sh_label_position,
+                              sh_include_first_group_label, sh_label_text_mode, sh_label_custom_text, sh_label_position,
                               sh_label_width, sh_label_height, sh_label_thickness,
                               sh_magnet_diameter, sh_magnet_thickness, sh_magnet_count,
-                              sh_text_style, sh_text_depth, sh_font_size, sh_font_family);
+                              sh_text_style, sh_text_depth, sh_font_size, sh_font_family, sh_force_orientation);
     }
 }
 
@@ -2015,15 +2245,12 @@ module mw_assembly_view() {
     }
 }
 
-/* // Default view - show assembly unless generate_labels is specifically enabled
-if (sh_generate_labels) {
-    // When generating labels, show only the plates (for 3MF export)
-    mw_plate_1();
-    translate([200, 0, 0]) mw_plate_2(); // Separate plates for printing
-} else {
-    // Normal preview mode - show assembly
+development_mode = false;
+
+// For development, show both plates in the assembly view
+if (development_mode) {
     mw_assembly_view();
-} */
+}
 
 // Display information
 echo("=== Gridfinity Sample Box Generator ===");

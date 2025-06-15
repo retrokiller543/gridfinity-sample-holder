@@ -4,7 +4,7 @@
 use <algorithms/grouped_v2.scad>
 
 // Generate physical 3D label objects for printing
-module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=10.0, label_text_mode="auto", label_custom_text="", label_position="center", label_width=76.0, label_height=10.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold") {
+module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thickness, side_wall_thickness, sample_width, sample_thickness, min_spacing, cutout_start_z, row_spacing=0, enable_grouping=false, group_count=0, samples_per_group=0, group_spacing=10.0, include_first_group_label=false, label_text_mode="auto", label_custom_text="", label_position="center", label_width=76.0, label_height=10.0, label_thickness=1.5, magnet_diameter=6.0, magnet_thickness=2.0, magnet_count=2, text_style="embossed", text_depth=0.4, font_size=0, font_family="Liberation Sans:style=Bold", force_orientation="auto") {
     
     interior_width = (box_width * l_grid) - (2 * wall_thickness);
     interior_depth = (box_depth * l_grid) - (2 * side_wall_thickness);
@@ -13,12 +13,12 @@ module generate_label_objects(box_width, box_depth, box_height, l_grid, wall_thi
     
     // Generate the same layout as the main holder to get label positions
     positions = generate_single_pass_layout(interior_width, interior_depth, sample_width, sample_thickness, 
-                                          min_spacing, group_count, samples_per_group, group_spacing, row_spacing);
+                                          min_spacing, group_count, samples_per_group, group_spacing, row_spacing, include_first_group_label, force_orientation);
     
     if (len(positions) > 0) {
         // Calculate label positions using the same logic as the main holder
         label_positions = calculate_label_positions(positions, group_spacing, label_position, 
-                                                   label_height, label_width, sample_width, sample_thickness);
+                                                   label_height, label_width, sample_width, sample_thickness, include_first_group_label);
         
         if (len(label_positions) > 0) {
             echo(str("Generating ", len(label_positions), " physical labels"));
